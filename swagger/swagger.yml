@@ -1,0 +1,38 @@
+basePath: /v1
+consumes:
+- application/json
+info:
+  description: Api mid para la obtención de logs de AWS
+  title: auditoria_mid
+  version: '1.0'
+paths:
+  /auditoria/:
+    get:
+      description: "Parameters\n----------\nNinguno\n\nReturns\n-------\nResponse\n\
+        \    Respuesta con los logs consultados o error."
+      operationId: get_document_get_all
+      responses:
+        '200':
+          description: Success
+        '206':
+          description: Partial Content
+        '400':
+          description: Bad request
+        '404':
+          description: Not found
+        '500':
+          description: Server error
+      summary: Consulta eventos de logs en AWS CloudWatch
+      tags:
+      - auditoria
+produces:
+- application/json
+responses:
+  MaskError:
+    description: When any error occurs on mask
+  ParseError:
+    description: When a mask can't be parsed
+swagger: '2.0'
+tags:
+- description: Consulta logs de AWS
+  name: auditoria

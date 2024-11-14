@@ -1,0 +1,58 @@
+{
+    "swagger": "2.0",
+    "basePath": "/v1",
+    "paths": {
+        "/auditoria/": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "Success"
+                    },
+                    "206": {
+                        "description": "Partial Content"
+                    },
+                    "500": {
+                        "description": "Server error"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    },
+                    "400": {
+                        "description": "Bad request"
+                    }
+                },
+                "summary": "Consulta eventos de logs en AWS CloudWatch",
+                "description": "Parameters\n----------\nNinguno\n\nReturns\n-------\nResponse\n    Respuesta con los logs consultados o error.",
+                "operationId": "get_document_get_all",
+                "tags": [
+                    "auditoria"
+                ]
+            }
+        }
+    },
+    "info": {
+        "title": "auditoria_mid",
+        "version": "1.0",
+        "description": "Api mid para la obtenci\u00f3n de logs de AWS"
+    },
+    "produces": [
+        "application/json"
+    ],
+    "consumes": [
+        "application/json"
+    ],
+    "tags": [
+        {
+            "name": "auditoria",
+            "description": "Consulta logs de AWS"
+        }
+    ],
+    "responses": {
+        "ParseError": {
+            "description": "When a mask can't be parsed"
+        },
+        "MaskError": {
+            "description": "When any error occurs on mask"
+        }
+    }
+}
