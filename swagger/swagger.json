@@ -11,19 +11,56 @@
                     "206": {
                         "description": "Partial Content"
                     },
-                    "500": {
-                        "description": "Server error"
+                    "400": {
+                        "description": "Bad request"
                     },
                     "404": {
                         "description": "Not found"
                     },
-                    "400": {
-                        "description": "Bad request"
+                    "500": {
+                        "description": "Server error"
                     }
                 },
                 "summary": "Consulta eventos de logs en AWS CloudWatch",
                 "description": "Parameters\n----------\nNinguno\n\nReturns\n-------\nResponse\n    Respuesta con los logs consultados o error.",
                 "operationId": "get_document_get_all",
+                "tags": [
+                    "auditoria"
+                ]
+            }
+        },
+        "/auditoria/buscarLog": {
+            "post": {
+                "responses": {
+                    "200": {
+                        "description": "Success"
+                    },
+                    "206": {
+                        "description": "Partial Content"
+                    },
+                    "400": {
+                        "description": "Bad request"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    },
+                    "500": {
+                        "description": "Server error"
+                    }
+                },
+                "summary": "Filtra los logs de AWS con base en par\u00e1metros espec\u00edficos",
+                "description": "Parameters\n----------\nrequest : json\n    Un JSON que contiene:\n    - fechaInicio (str): Fecha de inicio en formato aaaa-mm-dd\n    - horaInicio (str): Hora de inicio en formato hh:mm\n    - fechaFin (str): Fecha de fin en formato aaaa-mm-dd\n    - horaFin (str): Hora de fin en formato hh:mm\n    - tipoLog (str): Tipo de log (GET, POST, PUT, etc.)\n    - codigoResponsable (int): C\u00f3digo del responsable\n    - rolResponsable (str): Rol del responsable\n\nReturns\n-------\nResponse\n    Respuesta con los logs filtrados en formato JSON.",
+                "operationId": "post_filter_logs",
+                "parameters": [
+                    {
+                        "name": "payload",
+                        "required": true,
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/filtro_log_request"
+                        }
+                    }
+                ],
                 "tags": [
                     "auditoria"
                 ]
@@ -47,6 +84,43 @@
             "description": "Consulta logs de AWS"
         }
     ],
+    "definitions": {
+        "filtro_log_request": {
+            "required": [
+                "codigoResponsable",
+                "fechaFin",
+                "fechaInicio",
+                "horaFin",
+                "horaInicio",
+                "rolResponsable",
+                "tipoLog"
+            ],
+            "properties": {
+                "fechaInicio": {
+                    "type": "string"
+                },
+                "horaInicio": {
+                    "type": "string"
+                },
+                "fechaFin": {
+                    "type": "string"
+                },
+                "horaFin": {
+                    "type": "string"
+                },
+                "tipoLog": {
+                    "type": "string"
+                },
+                "codigoResponsable": {
+                    "type": "integer"
+                },
+                "rolResponsable": {
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        }
+    },
     "responses": {
         "ParseError": {
             "description": "When a mask can't be parsed"
