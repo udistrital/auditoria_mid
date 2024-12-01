@@ -86,38 +86,3 @@ class FilterLogs(Resource):
         """
         params = request.json 
         return auditoria.postBuscarLog(params)
-
-@documentNamespaceController.route('/filtroPrueba', strict_slashes=False)
-class FilterLogs(Resource):
-    @documentDoc.doc(responses={
-        200: 'Success',
-        206: 'Partial Content',
-        400: 'Bad request',
-        404: 'Not found',
-        500: 'Server error'
-    }, body=auditoria_params['filtro_log_model'])  
-    @documentNamespaceController.expect(auditoria_params['filtro_log_model'])  
-    @cross_origin(**api_cors_config)
-    def post(self):
-        """
-        Filtra los logs de AWS con base en parámetros específicos.
-
-        Parameters
-        ----------
-        request : json
-            Un JSON que contiene:
-            - fechaInicio (str): Fecha de inicio en formato aaaa-mm-dd
-            - horaInicio (str): Hora de inicio en formato hh:mm
-            - fechaFin (str): Fecha de fin en formato aaaa-mm-dd
-            - horaFin (str): Hora de fin en formato hh:mm
-            - tipoLog (str): Tipo de log (GET, POST, PUT, etc.)
-            - codigoResponsable (int): Código del responsable
-            - rolResponsable (str): Rol del responsable
-
-        Returns
-        -------
-        Response
-            Respuesta con los logs filtrados en formato JSON.
-        """
-        #params = request.json 
-        return auditoria.postFiltroPrueba()

@@ -86,8 +86,6 @@ def getOneLog(params):
         """.format(filtroBusqueda)
         
         # Rango de fechas
-        print("START TIME:" + params['startTime'])
-        print("END TIME:" + params['endTime'])
         start_time = int(time.mktime(datetime.strptime(params['startTime'], "%Y-%m-%d %H:%M").timetuple()))
         end_time = int(time.mktime(datetime.strptime(params['endTime'], "%Y-%m-%d %H:%M").timetuple()))
         
@@ -112,9 +110,7 @@ def getOneLog(params):
             for log in result['results']:
                 timestamp = next(item['value'] for item in log if item['field'] == '@timestamp')
                 message = next(item['value'] for item in log if item['field'] == '@message')
-                print("\n\n\n\n\n"+str(message)+"\n\n\n\n\n")
                 extracted_data = extract_log_data(message)
-                print("\n\n\n\n\n"+str(extracted_data)+"\n\n\n\n\n")
                 # Crear instancia de RespuestaLog
                 log_obj = respuesta_log.RespuestaLog(
                     idLog=extracted_data.get("eventId", "N/A"),
