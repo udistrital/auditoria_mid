@@ -80,7 +80,7 @@ def getOneLog(params):
             filtroBusqueda=filtroBusqueda.lower()
         query_string = """
         fields @timestamp, @message
-        | filter @message like /{}/
+        | filter @message like /{}/ and @message like /middleware/
         | sort @timestamp desc
         | limit 20
         """.format(filtroBusqueda)
