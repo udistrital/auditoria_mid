@@ -142,7 +142,6 @@ def getOneLog(params):
         )
 
     except Exception as e:
-        print("AWS Error:", str(e))
         return Response(
             json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}),
             status=500,
@@ -186,3 +185,65 @@ def extract_log_data(log_entry):
             else:
                 data[key] = match.group(1)
     return data
+
+def extract_log_json(log_entry):
+
+    patterns = {
+        "endpoint": r"@&([\w\.:/-]+@&/v1/[\w_]+\?[^@]+)@&",
+        "api": r"@&([\w_]+)@&[\w\.:/-]+@&",
+        "metodo": r"@&([A-Z]+)@&",
+        "usuario": r"@&([\w]+)@&map\[RouterPattern:"
+    }
+    dataGet=r"json:map\[Data:\[(.*)Message:"
+    
+    endpointPost=r"@&([\w\.:/-]+@&/v1/[\w_]+)@&"
+    dataPost=r"json:map\[Data:\{(.*?)\} Message:"
+
+    data = {}
+    for key, pattern in patterns.items():
+        match = re.search(pattern, log_entry)
+        if match:
+            if key == "metodo":
+                data["metodo"] = match.group(1)
+                if match.group(1) == "POST":
+                    print("Encontró un POST en el log")
+                    matchPost = re.search(endpointPost, log_entry)
+                    if matchPost:
+                        data["endpoint"] = clean_data(matchPost.group(1))
+                    matchPost = re.search(dataPost, log_entry)
+                    if matchPost:
+                        data["data"] = clean_data(matchPost.group(1))
+                elif match.group(1) == "GET":  
+                    matchGet = re.search(dataGet, log_entry)
+                    if matchGet:
+                        data["data"] = clean_data(matchGet.group(1))
+
+            else:
+                data[key] = clean_data(match.group(1))
+
+    json_result = json.dumps(data, indent=4)
+    return json_result
+
+def clean_data(data_str):
+    """
+    Limpia caracteres no deseados y secuencias específicas del string.
+    """
+    cleaned_data = data_str
+    cleaned_data = re.sub(r"%!s", "", cleaned_data)  
+    cleaned_data = re.sub(r"<nil>", "", cleaned_data)  
+    cleaned_data = (
+        cleaned_data
+        .replace("@", "")
+        .replace("&", "")
+        .replace("{", "")
+        .replace("}", "")
+        .replace("(", "")
+        .replace(")", "")
+        .replace("*", "")
+    )
+    cleaned_data = re.sub(r'\\', "", cleaned_data) 
+    cleaned_data = re.sub(r'\\\"', "", cleaned_data)
+    cleaned_data = re.sub(r'["\n]', " ", cleaned_data) 
+    cleaned_data = re.sub(r'\s+', ' ', cleaned_data).strip()
+    
+    return cleaned_data
