@@ -73,48 +73,71 @@ def getOneLog(params):
         json : Evento de log o información de error.
     """
     try:
-        start_time = int(time.mktime(datetime.strptime(params['startTime'], "%Y-%m-%d %H:%M").timetuple()) * 1000)
-        end_time = int(time.mktime(datetime.strptime(params['endTime'], "%Y-%m-%d %H:%M").timetuple()) * 1000)
 
-        response = client.filter_log_events(
+        #Creación del query
+        filtroBusqueda=params["filterPattern"]
+        if filtroBusqueda=="MIDDLEWARE":
+            filtroBusqueda=filtroBusqueda.lower()
+        query_string = """
+        fields @timestamp, @message
+        | filter @message like /{}/ and @message like /middleware/
+        | sort @timestamp desc
+        | limit 20
+        """.format(filtroBusqueda)
+        
+        # Rango de fechas
+        start_time = int(time.mktime(datetime.strptime(params['startTime'], "%Y-%m-%d %H:%M").timetuple()))
+        end_time = int(time.mktime(datetime.strptime(params['endTime'], "%Y-%m-%d %H:%M").timetuple()))
+        
+        # Inicia la consulta
+        response = client.start_query(
             logGroupName=params['logGroupName'],
             startTime=start_time,
-            endTime=end_time
+            endTime=end_time,
+            queryString=query_string
         )
-
-        eventos = []
-        for event in response.get('events', []):
-            extracted_data = extract_log_data(event.get('message', ''))
-            pruebaPeticion = extract_log_json(event.get('message', ''))
-
-            log = respuesta_log.RespuestaLog(
-                idLog=event.get('eventId', 'N/A'),
-                tipoLog=extracted_data.get("tipoLog", "N/A"), 
-                fecha=extracted_data.get("fecha", datetime.utcfromtimestamp(event['timestamp'] / 1000).strftime("%Y-%m-%d %H:%M:%S")),
-                rolResponsable=extracted_data.get("rolResponsable", "N/A"),
-                nombreResponsable="N/A",  
-                documentoResponsable="N/A", 
-                direccionAccion=extracted_data.get("direccionAccion", 'N/A'),
-                rol=extracted_data.get("rolResponsable", "N/A"), 
-                apisConsumen=extracted_data.get("apiConsumen", 'N/A'),
-                peticionRealizada=pruebaPeticion,
-                eventoBD=extracted_data.get("queryEvento", "N/A"), 
-                tipoError="N/A",  
-                #mensajeError="N/A"
-                mensajeError=event.get('message', 'N/A')
-            )
-            eventos.append(log)
-
-        if not eventos:
+        query_id = response['queryId']
+        # Espera a que la consulta termine
+        while True:
+            result = client.get_query_results(queryId=query_id)
+            if result['status'] in ['Complete', 'Failed', 'Cancelled']:
+                break
+            time.sleep(1)
+        # Procesa los resultados si están disponibles
+        if result['status'] == 'Complete' and result['results']:
+            # Extrae los resultados y formatea
+            events = []
+            for log in result['results']:
+                timestamp = next(item['value'] for item in log if item['field'] == '@timestamp')
+                message = next(item['value'] for item in log if item['field'] == '@message')
+                extracted_data = extract_log_data(message)
+                # Crear instancia de RespuestaLog
+                log_obj = respuesta_log.RespuestaLog(
+                    idLog=extracted_data.get("eventId", "N/A"),
+                    tipoLog=extracted_data.get("tipoLog", "N/A"),
+                    fecha=datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f").strftime("%Y-%m-%d %H:%M:%S.%f"),
+                    rolResponsable=extracted_data.get("rolResponsable", "N/A"),
+                    nombreResponsable="N/A",
+                    documentoResponsable="N/A",
+                    direccionAccion=extracted_data.get("direccionAccion", "N/A"),
+                    rol=extracted_data.get("rolResponsable", "N/A"),
+                    apisConsumen=extracted_data.get("apiConsumen", "N/A"),
+                    peticionRealizada=message,
+                    eventoBD=extracted_data.get("queryEvento", "N/A"),
+                    tipoError="N/A",
+                    mensajeError="N/A"
+                )
+                events.append(log_obj)
+            # Retornar respuesta en el formato esperado
             return Response(
-                json.dumps({'Status': 'No logs found', 'Code': '404', 'Data': []}),
-                status=404,
+                json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': [vars(log) for log in events]}),
+                status=200,
                 mimetype='application/json'
             )
-
+        # Si no se encontraron logs o la consulta falló
         return Response(
-            json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': [vars(log) for log in eventos]}),  
-            status=200,
+            json.dumps({'Status': 'No logs found or query failed', 'Code': '404', 'Data': []}),
+            status=404,
             mimetype='application/json'
         )
 

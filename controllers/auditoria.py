@@ -1,6 +1,8 @@
+import os
 from services import auditoriaService 
 from flask import json
 from flask import Response
+import boto3, time
 
 def getAll(data):
     """
@@ -58,5 +60,3 @@ def postBuscarLog(data):
             status=500,
             mimetype='application/json'
         )
-
-

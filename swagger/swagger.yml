@@ -1,6 +1,32 @@
 basePath: /v1
 consumes:
 - application/json
+definitions:
+  filtro_log_request:
+    properties:
+      codigoResponsable:
+        type: integer
+      fechaFin:
+        type: string
+      fechaInicio:
+        type: string
+      horaFin:
+        type: string
+      horaInicio:
+        type: string
+      rolResponsable:
+        type: string
+      tipoLog:
+        type: string
+    required:
+    - codigoResponsable
+    - fechaFin
+    - fechaInicio
+    - horaFin
+    - horaInicio
+    - rolResponsable
+    - tipoLog
+    type: object
 info:
   description: Api mid para la obtención de logs de AWS
   title: auditoria_mid
@@ -23,6 +49,37 @@ paths:
         '500':
           description: Server error
       summary: Consulta eventos de logs en AWS CloudWatch
+      tags:
+      - auditoria
+  /auditoria/buscarLog:
+    post:
+      description: "Parameters\n----------\nrequest : json\n    Un JSON que contiene:\n\
+        \    - fechaInicio (str): Fecha de inicio en formato aaaa-mm-dd\n    - horaInicio\
+        \ (str): Hora de inicio en formato hh:mm\n    - fechaFin (str): Fecha de fin\
+        \ en formato aaaa-mm-dd\n    - horaFin (str): Hora de fin en formato hh:mm\n\
+        \    - tipoLog (str): Tipo de log (GET, POST, PUT, etc.)\n    - codigoResponsable\
+        \ (int): Código del responsable\n    - rolResponsable (str): Rol del responsable\n\
+        \nReturns\n-------\nResponse\n    Respuesta con los logs filtrados en formato\
+        \ JSON."
+      operationId: post_filter_logs
+      parameters:
+      - in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/filtro_log_request'
+      responses:
+        '200':
+          description: Success
+        '206':
+          description: Partial Content
+        '400':
+          description: Bad request
+        '404':
+          description: Not found
+        '500':
+          description: Server error
+      summary: Filtra los logs de AWS con base en parámetros específicos
       tags:
       - auditoria
 produces:
