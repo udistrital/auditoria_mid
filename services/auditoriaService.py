@@ -76,13 +76,12 @@ def getOneLog(params):
 
         #Creación del query
         filtroBusqueda=params["filterPattern"]
-        if filtroBusqueda=="MIDDLEWARE":
-            filtroBusqueda=filtroBusqueda.lower()
+        #if filtroBusqueda=="MIDDLEWARE":
+        #    filtroBusqueda=filtroBusqueda.lower()
         query_string = """
         fields @timestamp, @message
         | filter @message like /{}/ and @message like /middleware/
         | sort @timestamp desc
-        | limit 20
         """.format(filtroBusqueda)
         
         # Rango de fechas
@@ -91,7 +90,8 @@ def getOneLog(params):
         
         # Inicia la consulta
         response = client.start_query(
-            logGroupName=params['logGroupName'],
+            #logGroupName=params['logGroupName'],
+            logGroupName = f"/ecs/{params['logGroupName']}_prod",
             startTime=start_time,
             endTime=end_time,
             queryString=query_string

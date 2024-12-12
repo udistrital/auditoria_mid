@@ -40,10 +40,11 @@ def postBuscarLog(data):
     
     try:
         filtros = {
-            "logGroupName": "/ecs/polux_crud_test",  
+            # "logGroupName": "/ecs/polux_crud_test",
+            "logGroupName": data.get('nombreApi'), 
             "startTime": f"{data['fechaInicio']} {data['horaInicio']}",
             "endTime": f"{data['fechaFin']} {data['horaFin']}",
-            "filterPattern": data.get('tipoLog', '')
+            "filterPattern": data.get('tipoLog')
         }
 
         print("Filtros procesados:", filtros)
