@@ -26,6 +26,9 @@ def define_parameters(api):
         ),
         'nombreApi': fields.String(
             required=True
+        ),
+        'entornoApi': fields.String(
+            required=True
         )
     })
 
