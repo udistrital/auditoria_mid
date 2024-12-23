@@ -7,6 +7,7 @@ import time
 from flask import Response
 from models import respuesta_log
 import re
+import requests
 
 client = boto3.client(
     'logs',
@@ -110,19 +111,41 @@ def getOneLog(params):
             for log in result['results']:
                 timestamp = next(item['value'] for item in log if item['field'] == '@timestamp')
                 message = next(item['value'] for item in log if item['field'] == '@message')
+                
                 extracted_data = extract_log_data(message)
+                fechaConvertida = ""
+                usuarioLog = ""
+                rolUsuarioBuscado = ""
+
+                try:
+                    fechaConvertida = datetime.strptime(extracted_data.get("fecha"), "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d %H:%M:%S")
+                except Exception as e:
+                    fechaConvertida = ""
+
+                usuarioSinEspacio = extracted_data.get("usuario", "").strip()
+                if usuarioSinEspacio not in ["N/A", "Error", "Error WSO2", "Error WSO2 - Sin usuario", ""]:
+                    usuarioLog = f"{usuarioSinEspacio}@udistrital.edu.co"
+                else:
+                    usuarioLog = "Error WSO2 - Sin usuario"
+
+                if usuarioLog not in ["Error WSO2 - Sin usuario"]:
+                    rolUsuarioBuscado = buscar_user_rol(usuarioLog)
+                else:
+                    rolUsuarioBuscado = "Rol no encontrado"
+
                 log_obj = respuesta_log.RespuestaLog(
-                    idLog=extracted_data.get("eventId", "N/A"),
-                    tipoLog=extracted_data.get("tipoLog", "N/A"),
-                    fecha=datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f").strftime("%Y-%m-%d %H:%M:%S.%f"),
-                    rolResponsable=extracted_data.get("rolResponsable", "N/A"),
+                    #idLog="N/A",
+                    tipoLog=extracted_data.get("tipoLog"),
+                    #fecha=datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f").strftime("%Y-%m-%d %H:%M:%S.%f"),
+                    fecha=fechaConvertida,
+                    rolResponsable=usuarioLog,
                     nombreResponsable="N/A",
                     documentoResponsable="N/A",
                     direccionAccion=extracted_data.get("direccionAccion", "N/A"),
-                    rol=extracted_data.get("rolResponsable", "N/A"),
+                    rol=rolUsuarioBuscado,
                     apisConsumen=extracted_data.get("apiConsumen", "N/A"),
-                    peticionRealizada=extract_log_json(message),
-                    eventoBD=extracted_data.get("queryEvento", "N/A"),
+                    peticionRealizada=extract_log_json(extracted_data.get("endpoint"),extracted_data.get("api"),extracted_data.get("metodo"),usuarioLog,extracted_data.get("data")),
+                    eventoBD=extracted_data.get("data"),
                     tipoError="N/A",
                     mensajeError=message
                 )
@@ -159,88 +182,137 @@ def extract_log_data(log_entry):
     dict
         Diccionario con los datos extraídos.
     """
-    data = {}
-
     patterns = {
-        "fecha": r"(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})",
-        #"tipoLog": r"\[([a-zA-Z0-9\._-]+:\d+)\]",
+        "apiConsumen": r"app_name:\s([^\s,]+)",
+        "api": r"host:\s([^\s,]+)",
+        "endpoint": r"end_point:\s([^\s,]+)",
+        "metodo": r"method:\s([^\s,]+)",
+        "fecha": r"date:\s([^\s,]+)",
+        "direccionAccion": r"ip_user:\s([^\s,]+)",
+        "user_agent": r"user_agent:\s([^\s,]+)",
+        "usuario": r"\b, user:\s([^\s,]+)",
+        "data": r"data:\s({.*})", 
         "tipoLog": r"\[([a-zA-Z0-9\._-]+)(?=\.\w+:)",
-        "rolResponsable": r"@&[\w\.-]+@&([\w]+)@&",
-        "apiConsumen": r"@&([\w\.:/-]+)@&",
-        "direccionAccion": r"@&(\d+\.\d+\.\d+\.\d+)@&",
-        "eventoBD": r"/v1/([\w_]+)\?([^\@]+)"
     }
+
+    extracted_data = {}
+    clean_log = re.sub(r"\x1b\[[0-9;]*m", "", log_entry)
 
     for key, pattern in patterns.items():
-        match = re.search(pattern, log_entry)
+        match = re.search(pattern, clean_log)
         if match:
-            if key == "tipoLog":
-                data["tipoLog"] = match.group(1)
-            if key == "eventoBD":
-                data["nombreEvento"] = match.group(1)
-                data["queryEvento"] = match.group(2)
+            value = match.group(1)
+            if key == "data":
+                try:
+                    extracted_data[key] = json.loads(value)
+                except json.JSONDecodeError:
+                    extracted_data[key] = value  
             else:
-                data[key] = match.group(1)
-    return data
+                extracted_data[key] = value
 
-def extract_log_json(log_entry):
+    return extracted_data
 
-    patterns = {
-        "endpoint": r"@&([\w\.:/-]+@&/v1/[\w_]+\?[^@]+)@&",
-        "api": r"@&([\w_]+)@&[\w\.:/-]+@&",
-        "metodo": r"@&([A-Z]+)@&",
-        "usuario": r"@&([\w]+)@&map\[RouterPattern:"
-    }
-    dataGet=r"json:map\[Data:\[(.*)Message:"
-    
-    endpointPost=r"@&([\w\.:/-]+@&/v1/[\w_]+)@&"
-    dataPost=r"json:map\[Data:\{(.*?)\} Message:"
+#def extract_log_json(log_entry):
+#
+#    patterns = {
+#        "endpoint": r"end_point:\s([^\s,]+)",
+#        "api": r"host:\s([^\s,]+)",
+#        "metodo": r"method:\s([^\s,]+)",
+#        "usuario": r"\b, user:\s([^\s,]+)",
+#    }
+#    #dataGet=r"json:map\[Data:\[(.*)Message:"
+#    dataGet=r'"json":\s?{.*"Data":\[(.*?)\],"Message":'
+#    
+#    endpointPost=r"@&([\w\.:/-]+@&/v1/[\w_]+)@&"
+#    dataPost=r"json:map\[Data:\{(.*?)\} Message:"
+#
+#    data = {}
+#    for key, pattern in patterns.items():
+#        match = re.search(pattern, log_entry)
+#        if match:
+#            if key == "metodo":
+#                data["metodo"] = match.group(1)
+#                if match.group(1) == "POST":
+#                    print("Encontró un POST en el log")
+#                    matchPost = re.search(endpointPost, log_entry)
+#                    if matchPost:
+#                        data["endpoint"] = clean_data(matchPost.group(1))
+#                    matchPost = re.search(dataPost, log_entry)
+#                    if matchPost:
+#                        data["data"] = clean_data(matchPost.group(1))
+#                elif match.group(1) == "GET":  
+#                    matchGet = re.search(dataGet, log_entry)
+#                    if matchGet:
+#                        data["data"] = clean_data(matchGet.group(1))
+#
+#            else:
+#                data[key] = clean_data(match.group(1))
+#
+#    json_result = json.dumps(data, indent=4)
+#    return json_result
 
+def extract_log_json(endpoint,api,metodo,usuario,dataJson):
     data = {}
-    for key, pattern in patterns.items():
-        match = re.search(pattern, log_entry)
-        if match:
-            if key == "metodo":
-                data["metodo"] = match.group(1)
-                if match.group(1) == "POST":
-                    print("Encontró un POST en el log")
-                    matchPost = re.search(endpointPost, log_entry)
-                    if matchPost:
-                        data["endpoint"] = clean_data(matchPost.group(1))
-                    matchPost = re.search(dataPost, log_entry)
-                    if matchPost:
-                        data["data"] = clean_data(matchPost.group(1))
-                elif match.group(1) == "GET":  
-                    matchGet = re.search(dataGet, log_entry)
-                    if matchGet:
-                        data["data"] = clean_data(matchGet.group(1))
-
-            else:
-                data[key] = clean_data(match.group(1))
-
+    data["endpoint"] = endpoint
+    data["api"] = api
+    data["metodo"] = metodo
+    data["usuario"] = usuario
+    data["data"] = dataJson
     json_result = json.dumps(data, indent=4)
     return json_result
 
-def clean_data(data_str):
+#def clean_data(data_str):
+#    """
+#    Limpia caracteres no deseados y secuencias específicas del string.
+#    """
+#    cleaned_data = data_str
+#    cleaned_data = re.sub(r"%!s", "", cleaned_data)  
+#    cleaned_data = re.sub(r"<nil>", "", cleaned_data)  
+#    cleaned_data = (
+#        cleaned_data
+#        .replace("@", "")
+#        .replace("&", "")
+#        .replace("{", "")
+#        .replace("}", "")
+#        .replace("(", "")
+#        .replace(")", "")
+#        .replace("*", "")
+#    )
+#    cleaned_data = re.sub(r'\\', "", cleaned_data) 
+#    cleaned_data = re.sub(r'\\\"', "", cleaned_data)
+#    cleaned_data = re.sub(r'["\n]', " ", cleaned_data) 
+#    cleaned_data = re.sub(r'\s+', ' ', cleaned_data).strip()
+#    
+#    return cleaned_data
+
+
+def buscar_user_rol(user_email):
     """
-    Limpia caracteres no deseados y secuencias específicas del string.
+    Envía un método POST a la URL especificada con la información en formato JSON.
+
+    Args:
+        user_email (str): El correo electrónico del usuario que se enviará en el JSON.
+
+    Returns:
+        dict: La respuesta del servidor en formato JSON, o un error en caso de falla.
     """
-    cleaned_data = data_str
-    cleaned_data = re.sub(r"%!s", "", cleaned_data)  
-    cleaned_data = re.sub(r"<nil>", "", cleaned_data)  
-    cleaned_data = (
-        cleaned_data
-        .replace("@", "")
-        .replace("&", "")
-        .replace("{", "")
-        .replace("}", "")
-        .replace("(", "")
-        .replace(")", "")
-        .replace("*", "")
-    )
-    cleaned_data = re.sub(r'\\', "", cleaned_data) 
-    cleaned_data = re.sub(r'\\\"', "", cleaned_data)
-    cleaned_data = re.sub(r'["\n]', " ", cleaned_data) 
-    cleaned_data = re.sub(r'\s+', ' ', cleaned_data).strip()
+    url = f"{os.environ['API_AUDITORIA_MID']}/v1/token/userRol"
+    headers = {"Content-Type": "application/json"}
     
-    return cleaned_data
+    payload = {"user": user_email}
+    
+    try:
+        roles_a_excluir = ["Internal/everyone"] 
+
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()  
+
+        data = response.json()
+        roles = data.get("role", [])
+        
+        filtered_roles = [role for role in roles if role not in roles_a_excluir]
+
+        return ", ".join(filtered_roles)
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e)}  
+
