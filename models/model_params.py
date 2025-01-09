@@ -23,6 +23,12 @@ def define_parameters(api):
         ),
         'rolResponsable': fields.String(
             required=True
+        ),
+        'nombreApi': fields.String(
+            required=True
+        ),
+        'entornoApi': fields.String(
+            required=True
         )
     })
 

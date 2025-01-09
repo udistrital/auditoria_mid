@@ -73,45 +73,44 @@ def getOneLog(params):
         json : Evento de log o información de error.
     """
     try:
+        entornoApi = ''
 
-        #Creación del query
         filtroBusqueda=params["filterPattern"]
-        if filtroBusqueda=="MIDDLEWARE":
-            filtroBusqueda=filtroBusqueda.lower()
         query_string = """
         fields @timestamp, @message
         | filter @message like /{}/ and @message like /middleware/
         | sort @timestamp desc
-        | limit 20
         """.format(filtroBusqueda)
         
-        # Rango de fechas
         start_time = int(time.mktime(datetime.strptime(params['startTime'], "%Y-%m-%d %H:%M").timetuple()))
         end_time = int(time.mktime(datetime.strptime(params['endTime'], "%Y-%m-%d %H:%M").timetuple()))
         
-        # Inicia la consulta
+        if params['environmentApi'] == 'PRODUCTION':
+            entornoApi = 'prod'
+        else:
+            entornoApi = 'test'
+
+        print("nombre formado del api",f"/ecs/{params['logGroupName']}_{entornoApi}")
         response = client.start_query(
-            logGroupName=params['logGroupName'],
+            logGroupName = f"/ecs/{params['logGroupName']}_{entornoApi}",
             startTime=start_time,
             endTime=end_time,
             queryString=query_string
         )
         query_id = response['queryId']
-        # Espera a que la consulta termine
+
         while True:
             result = client.get_query_results(queryId=query_id)
             if result['status'] in ['Complete', 'Failed', 'Cancelled']:
                 break
             time.sleep(1)
-        # Procesa los resultados si están disponibles
+
         if result['status'] == 'Complete' and result['results']:
-            # Extrae los resultados y formatea
             events = []
             for log in result['results']:
                 timestamp = next(item['value'] for item in log if item['field'] == '@timestamp')
                 message = next(item['value'] for item in log if item['field'] == '@message')
                 extracted_data = extract_log_data(message)
-                # Crear instancia de RespuestaLog
                 log_obj = respuesta_log.RespuestaLog(
                     idLog=extracted_data.get("eventId", "N/A"),
                     tipoLog=extracted_data.get("tipoLog", "N/A"),
@@ -122,19 +121,17 @@ def getOneLog(params):
                     direccionAccion=extracted_data.get("direccionAccion", "N/A"),
                     rol=extracted_data.get("rolResponsable", "N/A"),
                     apisConsumen=extracted_data.get("apiConsumen", "N/A"),
-                    peticionRealizada=message,
+                    peticionRealizada=extract_log_json(message),
                     eventoBD=extracted_data.get("queryEvento", "N/A"),
                     tipoError="N/A",
-                    mensajeError="N/A"
+                    mensajeError=message
                 )
                 events.append(log_obj)
-            # Retornar respuesta en el formato esperado
             return Response(
                 json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': [vars(log) for log in events]}),
                 status=200,
                 mimetype='application/json'
             )
-        # Si no se encontraron logs o la consulta falló
         return Response(
             json.dumps({'Status': 'No logs found or query failed', 'Code': '404', 'Data': []}),
             status=404,
