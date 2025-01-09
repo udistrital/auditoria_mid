@@ -48,6 +48,9 @@ def postBuscarLog(data):
             "filterPattern": data.get('tipoLog')
         }
 
+        #user_email = "pruebasoaspolux4@udistrital.edu.co"
+        #resultado = auditoriaService.buscar_user_rol(user_email)
+        #print(resultado)
         print("Filtros procesados:", filtros)
         return auditoriaService.getOneLog(filtros)
     except KeyError as e:

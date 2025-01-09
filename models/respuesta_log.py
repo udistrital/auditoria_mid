@@ -3,10 +3,10 @@ class RespuestaLog:
     Modelo para representar un evento de log en respuesta de la api.
     """
     def __init__(
-            self, idLog, tipoLog, fecha, rolResponsable, nombreResponsable, documentoResponsable,
+            self, tipoLog, fecha, rolResponsable, nombreResponsable, documentoResponsable,
             direccionAccion, rol, apisConsumen, peticionRealizada, eventoBD, tipoError, mensajeError
         ):
-        self.idLog = idLog  
+        #self.idLog = idLog  
         self.tipoLog = tipoLog  
         self.fecha = fecha  
         self.rolResponsable = rolResponsable  
@@ -22,7 +22,7 @@ class RespuestaLog:
 
     def to_dict(self):
         return {
-            'idLog': self.idLog,
+            #'idLog': self.idLog,
             'tipoLog': self.tipoLog,
             'fecha': self.fecha,
             'rolResponsable': self.rolResponsable,
