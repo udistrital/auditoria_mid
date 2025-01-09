@@ -8,6 +8,9 @@ from flask import Response
 from models import respuesta_log
 import re
 import requests
+from pytz import timezone, utc
+from datetime import datetime, timedelta
+import time
 
 client = boto3.client(
     'logs',
@@ -83,9 +86,21 @@ def getOneLog(params):
         | sort @timestamp desc
         """.format(filtroBusqueda)
         
-        start_time = int(time.mktime(datetime.strptime(params['startTime'], "%Y-%m-%d %H:%M").timetuple()))
-        end_time = int(time.mktime(datetime.strptime(params['endTime'], "%Y-%m-%d %H:%M").timetuple()))
+        #start_time = int(time.mktime(datetime.strptime(params['startTime'], "%Y-%m-%d %H:%M").timetuple()))
+        #end_time = int(time.mktime(datetime.strptime(params['endTime'], "%Y-%m-%d %H:%M").timetuple()))
         
+        local_tz = timezone('America/Bogota')  
+        utc_tz = utc
+
+        local_start_time = datetime.strptime(params['startTime'], "%Y-%m-%d %H:%M")
+        local_end_time = datetime.strptime(params['endTime'], "%Y-%m-%d %H:%M")
+
+        utc_start_time = local_tz.localize(local_start_time).astimezone(utc_tz)
+        utc_end_time = local_tz.localize(local_end_time).astimezone(utc_tz)
+
+        start_time = int(utc_start_time.timestamp())
+        end_time = int(utc_end_time.timestamp())
+
         if params['environmentApi'] == 'PRODUCTION':
             entornoApi = 'prod'
         else:
