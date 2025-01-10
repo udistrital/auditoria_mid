@@ -56,7 +56,7 @@ steps:
         from_secret: SONAR_TOKEN
 
   - name: publish_to_ecr_release
-    image: plugins/ecr
+    image: plugins/ecr:20.18.5
     settings:
       access_key:
         from_secret: AWS_ACCESS_KEY_ID
