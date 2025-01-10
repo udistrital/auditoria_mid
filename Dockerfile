@@ -1,5 +1,8 @@
 FROM python:3.8
 
+# Verificar la conexión a internet
+RUN ping -c 4 google.com || (echo "No internet connection" && exit 1)
+
 RUN pip install awscli
 
 COPY entrypoint.sh entrypoint.sh
