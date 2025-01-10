@@ -1,4 +1,7 @@
-FROM python:3.8
+FROM alpine:3.15
+
+# Instalar ping
+RUN apk add --no-cache iputils
 
 # Verificar la conexión a internet
 RUN ping -c 4 google.com || (echo "No internet connection" && exit 1)
