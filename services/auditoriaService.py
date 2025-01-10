@@ -34,10 +34,6 @@ def getAllLogs(params):
     """
     try:
         log_group_name = params.get('log_group_name', '/ecs/polux_crud_test')
-        """
-        start_time = int(time.mktime(datetime.strptime(params.get('start_time', '2024-08-01'), "%Y-%m-%d").timetuple()) * 1000)
-        end_time = int(time.mktime(datetime.strptime(params.get('end_time', '2024-08-02'), "%Y-%m-%d").timetuple()) * 1000)
-        """
         start_time = int(time.mktime(datetime(2024, 8, 1, 0, 0).timetuple()) * 1000)
         end_time = int(time.mktime(datetime(2024, 8, 2, 0, 0).timetuple()) * 1000)
 
@@ -86,9 +82,6 @@ def getOneLog(params):
         | sort @timestamp desc
         """.format(filtroBusqueda)
         
-        #start_time = int(time.mktime(datetime.strptime(params['startTime'], "%Y-%m-%d %H:%M").timetuple()))
-        #end_time = int(time.mktime(datetime.strptime(params['endTime'], "%Y-%m-%d %H:%M").timetuple()))
-        
         local_tz = timezone('America/Bogota')  
         utc_tz = utc
 
@@ -106,7 +99,6 @@ def getOneLog(params):
         else:
             entornoApi = 'test'
 
-        print("nombre formado del api",f"/ecs/{params['logGroupName']}_{entornoApi}")
         response = client.start_query(
             logGroupName = f"/ecs/{params['logGroupName']}_{entornoApi}",
             startTime=start_time,
@@ -126,7 +118,7 @@ def getOneLog(params):
             for log in result['results']:
                 timestamp = next(item['value'] for item in log if item['field'] == '@timestamp')
                 message = next(item['value'] for item in log if item['field'] == '@message')
-                
+
                 extracted_data = extract_log_data(message)
                 fechaConvertida = ""
                 usuarioLog = ""
@@ -149,9 +141,7 @@ def getOneLog(params):
                     rolUsuarioBuscado = "Rol no encontrado"
 
                 log_obj = respuesta_log.RespuestaLog(
-                    #idLog="N/A",
                     tipoLog=extracted_data.get("tipoLog"),
-                    #fecha=datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f").strftime("%Y-%m-%d %H:%M:%S.%f"),
                     fecha=fechaConvertida,
                     rolResponsable=usuarioLog,
                     nombreResponsable="N/A",
@@ -160,7 +150,7 @@ def getOneLog(params):
                     rol=rolUsuarioBuscado,
                     apisConsumen=extracted_data.get("apiConsumen", "N/A"),
                     peticionRealizada=extract_log_json(extracted_data.get("endpoint"),extracted_data.get("api"),extracted_data.get("metodo"),usuarioLog,extracted_data.get("data")),
-                    eventoBD=extracted_data.get("data"),
+                    eventoBD=reemplazar_valores_log(extracted_data.get("metodo"),extracted_data.get("sql_orm")),
                     tipoError="N/A",
                     mensajeError=message
                 )
@@ -208,6 +198,7 @@ def extract_log_data(log_entry):
         "usuario": r"\b, user:\s([^\s,]+)",
         "data": r"data:\s({.*})", 
         "tipoLog": r"\[([a-zA-Z0-9\._-]+)(?=\.\w+:)",
+        "sql_orm": r"sql_orm:\s\{(.*?)\},\s+ip_user:"
     }
 
     extracted_data = {}
@@ -227,45 +218,6 @@ def extract_log_data(log_entry):
 
     return extracted_data
 
-#def extract_log_json(log_entry):
-#
-#    patterns = {
-#        "endpoint": r"end_point:\s([^\s,]+)",
-#        "api": r"host:\s([^\s,]+)",
-#        "metodo": r"method:\s([^\s,]+)",
-#        "usuario": r"\b, user:\s([^\s,]+)",
-#    }
-#    #dataGet=r"json:map\[Data:\[(.*)Message:"
-#    dataGet=r'"json":\s?{.*"Data":\[(.*?)\],"Message":'
-#    
-#    endpointPost=r"@&([\w\.:/-]+@&/v1/[\w_]+)@&"
-#    dataPost=r"json:map\[Data:\{(.*?)\} Message:"
-#
-#    data = {}
-#    for key, pattern in patterns.items():
-#        match = re.search(pattern, log_entry)
-#        if match:
-#            if key == "metodo":
-#                data["metodo"] = match.group(1)
-#                if match.group(1) == "POST":
-#                    print("Encontró un POST en el log")
-#                    matchPost = re.search(endpointPost, log_entry)
-#                    if matchPost:
-#                        data["endpoint"] = clean_data(matchPost.group(1))
-#                    matchPost = re.search(dataPost, log_entry)
-#                    if matchPost:
-#                        data["data"] = clean_data(matchPost.group(1))
-#                elif match.group(1) == "GET":  
-#                    matchGet = re.search(dataGet, log_entry)
-#                    if matchGet:
-#                        data["data"] = clean_data(matchGet.group(1))
-#
-#            else:
-#                data[key] = clean_data(match.group(1))
-#
-#    json_result = json.dumps(data, indent=4)
-#    return json_result
-
 def extract_log_json(endpoint,api,metodo,usuario,dataJson):
     data = {}
     data["endpoint"] = endpoint
@@ -275,31 +227,6 @@ def extract_log_json(endpoint,api,metodo,usuario,dataJson):
     data["data"] = dataJson
     json_result = json.dumps(data, indent=4)
     return json_result
-
-#def clean_data(data_str):
-#    """
-#    Limpia caracteres no deseados y secuencias específicas del string.
-#    """
-#    cleaned_data = data_str
-#    cleaned_data = re.sub(r"%!s", "", cleaned_data)  
-#    cleaned_data = re.sub(r"<nil>", "", cleaned_data)  
-#    cleaned_data = (
-#        cleaned_data
-#        .replace("@", "")
-#        .replace("&", "")
-#        .replace("{", "")
-#        .replace("}", "")
-#        .replace("(", "")
-#        .replace(")", "")
-#        .replace("*", "")
-#    )
-#    cleaned_data = re.sub(r'\\', "", cleaned_data) 
-#    cleaned_data = re.sub(r'\\\"', "", cleaned_data)
-#    cleaned_data = re.sub(r'["\n]', " ", cleaned_data) 
-#    cleaned_data = re.sub(r'\s+', ' ', cleaned_data).strip()
-#    
-#    return cleaned_data
-
 
 def buscar_user_rol(user_email):
     """
@@ -331,3 +258,42 @@ def buscar_user_rol(user_email):
     except requests.exceptions.RequestException as e:
         return {"error": str(e)}  
 
+def reemplazar_valores_log(metodo,log):
+    """
+    Procesa un log, extrae los valores de una consulta SQL y los reemplaza en su lugar correspondiente.
+    
+    Args:
+        log (str): Parte del log con la consulta SQL y los valores a reemplazar.
+        
+    Returns:
+        str: Consulta SQL con los valores reemplazados.
+    """
+    if metodo.upper() == "POST":
+        patron = r'\[(.*?)\] - (.+)'
+        match = re.search(patron, log)
+        if match:
+            consulta = match.group(1)
+            valores = match.group(2).split(", ")
+
+            for i, valor in enumerate(valores, start=1):
+                consulta = consulta.replace(f"${i}", valor.strip())
+
+            return consulta
+        else:
+            return "El formato del log POST no es válido: " + log
+        
+    elif metodo.upper() == "PUT":
+        patron = r'\[(.*?)\] - (.+)'
+        match = re.search(patron, log)
+        if match:
+            consulta = match.group(1)
+            valores = re.findall(r'`([^`]*)`', match.group(2))
+
+            for i, valor in enumerate(valores, start=1):
+                consulta = consulta.replace(f"${i}", valor.strip())
+            return consulta
+        else:
+            return "El formato del log PUT no es válido: " + log
+        
+    else:
+        return log
