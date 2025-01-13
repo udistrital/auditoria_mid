@@ -88,11 +88,12 @@
         "filtro_log_request": {
             "required": [
                 "codigoResponsable",
+                "entornoApi",
                 "fechaFin",
                 "fechaInicio",
                 "horaFin",
                 "horaInicio",
-                "rolResponsable",
+                "nombreApi",
                 "tipoLog"
             ],
             "properties": {
@@ -114,7 +115,10 @@
                 "codigoResponsable": {
                     "type": "integer"
                 },
-                "rolResponsable": {
+                "nombreApi": {
+                    "type": "string"
+                },
+                "entornoApi": {
                     "type": "string"
                 }
             },
