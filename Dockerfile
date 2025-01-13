@@ -20,6 +20,8 @@ COPY conf/** /conf/
 
 COPY controllers/** /controllers/
 
+COPY services/** /services/
+
 COPY models/** /models/
 
 COPY routers/** /routers/
