@@ -45,7 +45,8 @@ def postBuscarLog(data):
             "environmentApi": data.get('entornoApi'), 
             "startTime": f"{data['fechaInicio']} {data['horaInicio']}",
             "endTime": f"{data['fechaFin']} {data['horaFin']}",
-            "filterPattern": data.get('tipoLog')
+            "filterPattern": data.get('tipoLog'),
+            "emailUser": data.get('codigoResponsable')
         }
 
         #user_email = "pruebasoaspolux4@udistrital.edu.co"
