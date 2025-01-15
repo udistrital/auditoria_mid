@@ -139,7 +139,7 @@ def getOneLog(params):
                     rolUsuarioBuscado = buscar_user_rol(usuarioLog)
                 else:
                     rolUsuarioBuscado = "Rol no encontrado"
-
+                tipo_error, mensaje_error = extraer_error(message)
                 log_obj = respuesta_log.RespuestaLog(
                     tipoLog=extracted_data.get("tipoLog"),
                     fecha=fechaConvertida,
@@ -151,8 +151,8 @@ def getOneLog(params):
                     apisConsumen=extracted_data.get("apiConsumen", "N/A"),
                     peticionRealizada=extract_log_json(extracted_data.get("endpoint"),extracted_data.get("api"),extracted_data.get("metodo"),usuarioLog,extracted_data.get("data")),
                     eventoBD=reemplazar_valores_log(extracted_data.get("metodo"),extracted_data.get("sql_orm")),
-                    tipoError="N/A",
-                    mensajeError=message
+                    tipoError=tipo_error,
+                    mensajeError=mensaje_error
                 )
                 events.append(log_obj)
             return Response(
@@ -173,6 +173,53 @@ def getOneLog(params):
             mimetype='application/json'
         )
     
+def extraer_error(log_string):
+    """
+    Procesa una cadena de log y retorna tipoError y mensajeError.
+    Si no hay error en el log, retorna "N/A" para ambos valores.
+    """
+    tipo_error = "N/A"
+    mensaje_error = "N/A"
+
+    # Extraer la parte JSON del log
+    json_start = log_string.find("{", log_string.find("data: {"))
+    json_end = log_string.rfind("}}") + 2  # Último }} para cerrar JSON correctamente
+
+    if json_start != -1 and json_end != -1:
+        log_data_string = log_string[json_start:json_end]
+
+        # Verificar si hay una llave adicional y corregirla
+        try:
+            log_data = json.loads(log_data_string)
+        except json.JSONDecodeError:
+            # Si falla, intentamos quitar la última llave y volver a parsear
+            last_curly_index = log_data_string.rfind("}")
+            log_data_string = log_data_string[:last_curly_index]
+            log_data = json.loads(log_data_string)
+
+        # Extraer datos del JSON
+        if log_data.get("json", {}).get("Success") is False:
+            status = log_data["json"].get("Status", "N/A")
+            data_error = log_data["json"].get("Data", "N/A")
+            endpoint = log_data["json"].get("Message", "N/A")
+
+            # Interpretar el tipo de error
+            if status == "500":
+                tipo_error = "500 Internal Server Error"
+            elif status == "400":
+                tipo_error = "400 Bad Request"
+            else:
+                tipo_error = status
+
+            # Formatear el mensaje de error
+            mensaje_error = (
+                f"Mensaje de error: {data_error}\n"
+                f"Endpoint: {endpoint}\n"
+                f"Tipo de error: {tipo_error}"
+            )
+
+    return tipo_error, mensaje_error
+
 def extract_log_data(log_entry):
     """
     Extrae información clave del mensaje del log usando expresiones regulares.
