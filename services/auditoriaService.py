@@ -74,11 +74,26 @@ def getOneLog(params):
         entornoApi = ''
 
         filtroBusqueda=params["filterPattern"]
-        query_string = """
-        fields @timestamp, @message
-        | filter @message like /{}/ and @message like /middleware/
-        | sort @timestamp desc
-        """.format(filtroBusqueda)
+        filtroEmailUser=params["emailUser"]
+        query_string = ""
+
+        if filtroBusqueda and filtroEmailUser:
+            query_string = """
+            fields @timestamp, @message
+            | filter @message like /{}/ 
+            and @message like /middleware/ 
+            and @message like /{}/
+            | sort @timestamp desc
+            """.format(filtroBusqueda, filtroEmailUser)
+        elif filtroBusqueda:
+            query_string = """
+            fields @timestamp, @message
+            | filter @message like /{}/ 
+            and @message like /middleware/
+            | sort @timestamp desc
+            """.format(filtroBusqueda)
+        else:
+            raise ValueError("El parámetro del método HTTP o el correo del usuario son obligatorios.")
         
         local_tz = timezone('America/Bogota')  
         utc_tz = utc
