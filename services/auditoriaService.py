@@ -138,6 +138,8 @@ def getOneLog(params):
                 fechaConvertida = ""
                 usuarioLog = ""
                 rolUsuarioBuscado = ""
+                documentoUsuarioBuscado = ""
+                nombreUsuarioBuscado = ""
 
                 try:
                     fechaConvertida = datetime.strptime(extracted_data.get("fecha"), "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d %H:%M:%S")
@@ -150,17 +152,35 @@ def getOneLog(params):
                 else:
                     usuarioLog = "Error WSO2 - Sin usuario"
 
+                """
                 if usuarioLog not in ["Error WSO2 - Sin usuario"]:
                     rolUsuarioBuscado = buscar_user_rol(usuarioLog)
                 else:
                     rolUsuarioBuscado = "Rol no encontrado"
+                """
+
+                if usuarioLog not in ["Error WSO2 - Sin usuario"]:
+                    resultado = buscar_user_rol(usuarioLog)
+                    
+                    if "error" in resultado:
+                        rolUsuarioBuscado = "Error al obtener roles"
+                        documentoUsuarioBuscado = "Error al obtener documento"
+                        nombreUsuarioBuscado = "Error al obtener nombre"
+                    else:
+                        rolUsuarioBuscado = resultado.get("roles")
+                        documentoUsuarioBuscado = resultado.get("documento")
+                        nombreUsuarioBuscado = buscar_nombre_user(documentoUsuarioBuscado)
+                else:
+                    rolUsuarioBuscado = "Rol no encontrado"
+                    documentoUsuarioBuscado = "Documento no encontrado"
+                    nombreUsuarioBuscado = "Nombre no encontrado"
 
                 log_obj = respuesta_log.RespuestaLog(
                     tipoLog=extracted_data.get("tipoLog"),
                     fecha=fechaConvertida,
                     rolResponsable=usuarioLog,
-                    nombreResponsable="N/A",
-                    documentoResponsable="N/A",
+                    nombreResponsable=nombreUsuarioBuscado,
+                    documentoResponsable=documentoUsuarioBuscado,
                     direccionAccion=extracted_data.get("direccionAccion", "N/A"),
                     rol=rolUsuarioBuscado,
                     apisConsumen=extracted_data.get("apiConsumen", "N/A"),
@@ -243,6 +263,8 @@ def extract_log_json(endpoint,api,metodo,usuario,dataJson):
     json_result = json.dumps(data, indent=4)
     return json_result
 
+  
+
 def buscar_user_rol(user_email):
     """
     Envía un método POST a la URL especificada con la información en formato JSON.
@@ -266,12 +288,34 @@ def buscar_user_rol(user_email):
 
         data = response.json()
         roles = data.get("role", [])
+        documento = data.get("documento")
         
         filtered_roles = [role for role in roles if role not in roles_a_excluir]
 
-        return ", ".join(filtered_roles)
+        #return ", ".join(filtered_roles)
+        return {
+            "roles": ", ".join(filtered_roles),
+            "documento": documento,
+        }
     except requests.exceptions.RequestException as e:
         return {"error": str(e)}  
+
+def buscar_nombre_user(documento):
+    url = f"{os.environ['API_TERCEROS_CRUD']}/v1/datos_identificacion?query=numero:{documento}"
+    headers = {"Content-Type": "application/json"}
+    
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()  
+        data = response.json()
+
+        if isinstance(data, list) and len(data) > 0:
+            nombre_completo = data[0].get("TerceroId", {}).get("NombreCompleto", "Nombre no encontrado")
+            return nombre_completo
+        else:
+            return "Nombre no encontrado"
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e)} 
 
 def reemplazar_valores_log(metodo,log):
     """
