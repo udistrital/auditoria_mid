@@ -152,17 +152,14 @@ def getOneLog(params):
                 else:
                     usuarioLog = "Error WSO2 - Sin usuario"
 
-                """
-                if usuarioLog not in ["Error WSO2 - Sin usuario"]:
-                    rolUsuarioBuscado = buscar_user_rol(usuarioLog)
-                else:
-                    rolUsuarioBuscado = "Rol no encontrado"
-                """
-
                 if usuarioLog not in ["Error WSO2 - Sin usuario"]:
                     resultado = buscar_user_rol(usuarioLog)
                     
-                    if "error" in resultado:
+                    if "Usuario no registrado" in resultado:
+                        rolUsuarioBuscado = "Rol no encontrado"
+                        documentoUsuarioBuscado = "Documento no encontrado"
+                        nombreUsuarioBuscado = "Nombre no encontrado"
+                    elif "error" in resultado:
                         rolUsuarioBuscado = "Error al obtener roles"
                         documentoUsuarioBuscado = "Error al obtener documento"
                         nombreUsuarioBuscado = "Error al obtener nombre"
@@ -280,25 +277,22 @@ def buscar_user_rol(user_email):
     
     payload = {"user": user_email}
     
-    try:
-        roles_a_excluir = ["Internal/everyone"] 
-
+    try:    
         response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()  
+        response_data = response.json()  
 
-        data = response.json()
-        roles = data.get("role", [])
-        documento = data.get("documento")
-        
-        filtered_roles = [role for role in roles if role not in roles_a_excluir]
+        if response.status_code == 400 and "System" in response_data and "Error" in response_data["System"]:
+            return {"Usuario no registrado"}
+        else:
+            response.raise_for_status() 
 
-        #return ", ".join(filtered_roles)
-        return {
-            "roles": ", ".join(filtered_roles),
-            "documento": documento,
-        }
+            roles_a_excluir = ["Internal/everyone"]
+            filtered_roles = [role for role in response_data.get("role", []) if role not in roles_a_excluir]
+
+            return {"roles": ", ".join(filtered_roles), "documento": response_data.get("documento")}
+    
     except requests.exceptions.RequestException as e:
-        return {"error": str(e)}  
+        return {"Usuario no registrado"} 
 
 def buscar_nombre_user(documento):
     url = f"{os.environ['API_TERCEROS_CRUD']}/v1/datos_identificacion?query=numero:{documento}"
