@@ -9,7 +9,7 @@ api_cors_config = {
   "allow_headers": ["Authorization", "Content-Type"]
 }
 
-def checkEnv():
+def check_env():
   for variable in variables:
       if variable not in os.environ:
           print(str(variable) + " environment variable not found")

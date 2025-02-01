@@ -4,7 +4,7 @@ from flask import json
 from flask import Response
 import boto3, time
 
-def getAll(data):
+def get_all(data):
     """
         Consulta eventos de logs en CloudWatch para un grupo de logs específico en un rango de tiempo
         
@@ -16,9 +16,9 @@ def getAll(data):
         -------
         json : lista de eventos de logs o información de errores
     """
-    return auditoriaService.getAllLogs(data)
+    return auditoriaService.get_all_logs(data)
 
-def postBuscarLog(data):
+def post_buscar_log(data):
     """
         Consulta un log específico en CloudWatch en un rango de tiempo
         
@@ -31,16 +31,9 @@ def postBuscarLog(data):
         -------
         json : información del log a consultar
     """
-    """response_array=[]
-    try:
-        print("Datos recibidos:", data)
-        return auditoriaService.getOneLog(data)
-    except Exception as e:
-        return False"""
     
     try:
         filtros = {
-            # "logGroupName": "/ecs/polux_crud_test",
             "logGroupName": data.get('nombreApi'), 
             "environmentApi": data.get('entornoApi'), 
             "startTime": f"{data['fechaInicio']} {data['horaInicio']}",
@@ -49,11 +42,7 @@ def postBuscarLog(data):
             "emailUser": data.get('codigoResponsable')
         }
 
-        #user_email = "pruebasoaspolux4@udistrital.edu.co"
-        #resultado = auditoriaService.buscar_user_rol(user_email)
-        #print(resultado)
-        print("Filtros procesados:", filtros)
-        return auditoriaService.getOneLog(filtros)
+        return auditoriaService.get_one_log(filtros)
     except KeyError as e:
         return Response(
             json.dumps({'Status': 'Bad Request', 'Code': '400', 'Error': f"Missing parameter: {str(e)}"}),

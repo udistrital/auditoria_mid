@@ -5,7 +5,7 @@ from flask_cors import CORS, cross_origin
 from conf.conf import api_cors_config
 from models import model_params
 
-def addRouting(app):
+def add_routing(app):
     app.register_blueprint(healthCheckController)
     app.register_blueprint(auditoriaController, url_prefix='/v1')
 
@@ -15,7 +15,7 @@ CORS(healthCheckController)
 
 @healthCheckController.route('/')
 def _():
-    return healthCheck.healthCheck(documentDoc)
+    return healthCheck.health_check(documentDoc)
 
 auditoriaController = Blueprint('auditoriaController', __name__)
 CORS(auditoriaController)
@@ -26,7 +26,7 @@ documentNamespaceController = documentDoc.namespace("auditoria", description="Co
 auditoria_params=model_params.define_parameters(documentDoc)
 
 @documentNamespaceController.route('/', strict_slashes=False)
-class documentGetAll(Resource):
+class document_get_all(Resource):
     @documentDoc.doc(responses={
         200: 'Success',
         206: 'Partial Content',
@@ -49,7 +49,7 @@ class documentGetAll(Resource):
                 Respuesta con los logs consultados o error.
         """
         params = request.args  
-        return auditoria.getAll(params)
+        return auditoria.get_all(params)
 
 
 @documentNamespaceController.route('/buscarLog', strict_slashes=False)
@@ -85,4 +85,4 @@ class FilterLogs(Resource):
             Respuesta con los logs filtrados en formato JSON.
         """
         params = request.json 
-        return auditoria.postBuscarLog(params)
+        return auditoria.post_buscar_log(params)

@@ -12,6 +12,11 @@ from pytz import timezone, utc
 from datetime import datetime, timedelta
 import time
 
+MIME_TYPE_JSON = "application/json"
+ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
+USUARIO_NO_REGISTRADO ="Usuario no registrado"
+NOMBRE_NO_ENCONTRADO = "Nombre no encontrado"
+
 client = boto3.client(
     'logs',
     region_name='us-east-1',
@@ -19,7 +24,7 @@ client = boto3.client(
     aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
 )
 
-def getAllLogs(params):
+def get_all_logs(params):
     """
         Consulta eventos de logs en CloudWatch para un grupo de logs específico en un rango de tiempo
         
@@ -46,14 +51,14 @@ def getAllLogs(params):
         events = [{"timestamp": event['timestamp'], "message": event['message']} for event in response.get('events', [])]
         
         if not events:
-            return Response(json.dumps({'Status': 'No logs found', 'Code': '404', 'Data': []}), status=404, mimetype='application/json')
+            return Response(json.dumps({'Status': 'No logs found', 'Code': '404', 'Data': []}), status=404, mimetype=MIME_TYPE_JSON)
         
-        return Response(json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': events}), status=200, mimetype='application/json')
+        return Response(json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': events}), status=200, mimetype=MIME_TYPE_JSON)
     
     except Exception as e:
-        return Response(json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}), status=500, mimetype='application/json')
+        return Response(json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}), status=500, mimetype=MIME_TYPE_JSON)
 
-def getOneLog(params):
+def get_one_log(params):
     """
         Consulta un solo evento de logs en CloudWatch para un grupo de logs específico con filtros adicionales.
 
@@ -73,27 +78,27 @@ def getOneLog(params):
         json : Evento de log o información de error.
     """
     try:
-        entornoApi = ''
+        entorno_api = ''
 
-        filtroBusqueda=params["filterPattern"]
-        filtroEmailUser=params["emailUser"]
+        filtro_busqueda=params["filterPattern"]
+        filtro_email_user=params["emailUser"]
         query_string = ""
 
-        if filtroBusqueda and filtroEmailUser:
+        if filtro_busqueda and filtro_email_user:
             query_string = """
             fields @timestamp, @message
             | filter @message like /{}/ 
             and @message like /middleware/ 
             and @message like /{}/
             | sort @timestamp desc
-            """.format(filtroBusqueda, filtroEmailUser)
-        elif filtroBusqueda:
+            """.format(filtro_busqueda, filtro_email_user)
+        elif filtro_busqueda:
             query_string = """
             fields @timestamp, @message
             | filter @message like /{}/ 
             and @message like /middleware/
             | sort @timestamp desc
-            """.format(filtroBusqueda)
+            """.format(filtro_busqueda)
         else:
             raise ValueError("El parámetro del método HTTP o el correo del usuario son obligatorios.")
         
@@ -110,12 +115,12 @@ def getOneLog(params):
         end_time = int(utc_end_time.timestamp())
 
         if params['environmentApi'] == 'PRODUCTION':
-            entornoApi = 'prod'
+            entorno_api = 'prod'
         else:
-            entornoApi = 'test'
+            entorno_api = 'test'
 
         response = client.start_query(
-            logGroupName = f"/ecs/{params['logGroupName']}_{entornoApi}",
+            logGroupName = f"/ecs/{params['logGroupName']}_{entorno_api}",
             startTime=start_time,
             endTime=end_time,
             queryString=query_string
@@ -131,57 +136,56 @@ def getOneLog(params):
         if result['status'] == 'Complete' and result['results']:
             events = []
             for log in result['results']:
-                timestamp = next(item['value'] for item in log if item['field'] == '@timestamp')
                 message = next(item['value'] for item in log if item['field'] == '@message')
 
                 extracted_data = extract_log_data(message)
-                fechaConvertida = ""
-                usuarioLog = ""
-                rolUsuarioBuscado = ""
-                documentoUsuarioBuscado = ""
-                nombreUsuarioBuscado = ""
+                fecha_convertida = ""
+                usuario_log = ""
+                rol_usuario_buscado = ""
+                documento_usuario_buscado = ""
+                nombre_usuario_buscado = ""
 
                 try:
-                    fechaConvertida = datetime.strptime(extracted_data.get("fecha"), "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d %H:%M:%S")
+                    fecha_convertida = datetime.strptime(extracted_data.get("fecha"), "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d %H:%M:%S")
                 except Exception as e:
-                    fechaConvertida = ""
+                    fecha_convertida = ""
 
-                usuarioSinEspacio = extracted_data.get("usuario", "").strip()
-                if usuarioSinEspacio not in ["N/A", "Error", "Error WSO2", "Error WSO2 - Sin usuario", ""]:
-                    usuarioLog = f"{usuarioSinEspacio}@udistrital.edu.co"
+                usuario_sin_espacio = extracted_data.get("usuario", "").strip()
+                if usuario_sin_espacio not in ["N/A", "Error", "Error WSO2", ERROR_WSO2_SIN_USUARIO, ""]:
+                    usuario_log = f"{usuario_sin_espacio}@udistrital.edu.co"
                 else:
-                    usuarioLog = "Error WSO2 - Sin usuario"
+                    usuario_log = ERROR_WSO2_SIN_USUARIO
 
-                if usuarioLog not in ["Error WSO2 - Sin usuario"]:
-                    resultado = buscar_user_rol(usuarioLog)
+                if usuario_log not in [ERROR_WSO2_SIN_USUARIO]:
+                    resultado = buscar_user_rol(usuario_log)
                     
-                    if "Usuario no registrado" in resultado:
-                        rolUsuarioBuscado = "Rol no encontrado"
-                        documentoUsuarioBuscado = "Documento no encontrado"
-                        nombreUsuarioBuscado = "Nombre no encontrado"
+                    if USUARIO_NO_REGISTRADO in resultado:
+                        rol_usuario_buscado = "Rol no encontrado"
+                        documento_usuario_buscado = "Documento no encontrado"
+                        nombre_usuario_buscado = NOMBRE_NO_ENCONTRADO
                     elif "error" in resultado:
-                        rolUsuarioBuscado = "Error al obtener roles"
-                        documentoUsuarioBuscado = "Error al obtener documento"
-                        nombreUsuarioBuscado = "Error al obtener nombre"
+                        rol_usuario_buscado = "Error al obtener roles"
+                        documento_usuario_buscado = "Error al obtener documento"
+                        nombre_usuario_buscado = "Error al obtener nombre"
                     else:
-                        rolUsuarioBuscado = resultado.get("roles")
-                        documentoUsuarioBuscado = resultado.get("documento")
-                        nombreUsuarioBuscado = buscar_nombre_user(documentoUsuarioBuscado)
+                        rol_usuario_buscado = resultado.get("roles")
+                        documento_usuario_buscado = resultado.get("documento")
+                        nombre_usuario_buscado = buscar_nombre_user(documento_usuario_buscado)
                 else:
-                    rolUsuarioBuscado = "Rol no encontrado"
-                    documentoUsuarioBuscado = "Documento no encontrado"
-                    nombreUsuarioBuscado = "Nombre no encontrado"
+                    rol_usuario_buscado = "Rol no encontrado"
+                    documento_usuario_buscado = "Documento no encontrado"
+                    nombre_usuario_buscado = NOMBRE_NO_ENCONTRADO
 
                 log_obj = respuesta_log.RespuestaLog(
                     tipoLog=extracted_data.get("tipoLog"),
-                    fecha=fechaConvertida,
-                    rolResponsable=usuarioLog,
-                    nombreResponsable=nombreUsuarioBuscado,
-                    documentoResponsable=documentoUsuarioBuscado,
+                    fecha=fecha_convertida,
+                    rolResponsable=usuario_log,
+                    nombreResponsable=nombre_usuario_buscado,
+                    documentoResponsable=documento_usuario_buscado,
                     direccionAccion=extracted_data.get("direccionAccion", "N/A"),
-                    rol=rolUsuarioBuscado,
+                    rol=rol_usuario_buscado,
                     apisConsumen=extracted_data.get("apiConsumen", "N/A"),
-                    peticionRealizada=extract_log_json(extracted_data.get("endpoint"),extracted_data.get("api"),extracted_data.get("metodo"),usuarioLog,extracted_data.get("data")),
+                    peticionRealizada=extract_log_json(extracted_data.get("endpoint"),extracted_data.get("api"),extracted_data.get("metodo"),usuario_log,extracted_data.get("data")),
                     eventoBD=reemplazar_valores_log(extracted_data.get("metodo"),extracted_data.get("sql_orm")),
                     tipoError="N/A",
                     mensajeError=message
@@ -190,19 +194,19 @@ def getOneLog(params):
             return Response(
                 json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': [vars(log) for log in events]}),
                 status=200,
-                mimetype='application/json'
+                mimetype=MIME_TYPE_JSON
             )
         return Response(
             json.dumps({'Status': 'No logs found or query failed', 'Code': '404', 'Data': []}),
             status=404,
-            mimetype='application/json'
+            mimetype=MIME_TYPE_JSON
         )
 
     except Exception as e:
         return Response(
             json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}),
             status=500,
-            mimetype='application/json'
+            mimetype=MIME_TYPE_JSON
         )
     
 def extract_log_data(log_entry):
@@ -250,13 +254,13 @@ def extract_log_data(log_entry):
 
     return extracted_data
 
-def extract_log_json(endpoint,api,metodo,usuario,dataJson):
+def extract_log_json(endpoint,api,metodo,usuario,data_json):
     data = {}
     data["endpoint"] = endpoint
     data["api"] = api
     data["metodo"] = metodo
     data["usuario"] = usuario
-    data["data"] = dataJson
+    data["data"] = data_json
     json_result = json.dumps(data, indent=4)
     return json_result
 
@@ -273,7 +277,7 @@ def buscar_user_rol(user_email):
         dict: La respuesta del servidor en formato JSON, o un error en caso de falla.
     """
     url = f"{os.environ['API_AUDITORIA_MID']}/v1/token/userRol"
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": MIME_TYPE_JSON}
     
     payload = {"user": user_email}
     
@@ -282,7 +286,7 @@ def buscar_user_rol(user_email):
         response_data = response.json()  
 
         if response.status_code == 400 and "System" in response_data and "Error" in response_data["System"]:
-            return {"Usuario no registrado"}
+            return {USUARIO_NO_REGISTRADO}
         else:
             response.raise_for_status() 
 
@@ -291,12 +295,12 @@ def buscar_user_rol(user_email):
 
             return {"roles": ", ".join(filtered_roles), "documento": response_data.get("documento")}
     
-    except requests.exceptions.RequestException as e:
-        return {"Usuario no registrado"} 
+    except requests.exceptions.RequestException:
+        return {USUARIO_NO_REGISTRADO} 
 
 def buscar_nombre_user(documento):
     url = f"{os.environ['API_TERCEROS_CRUD']}/v1/datos_identificacion?query=numero:{documento}"
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": MIME_TYPE_JSON}
     
     try:
         response = requests.get(url, headers=headers)
@@ -304,10 +308,10 @@ def buscar_nombre_user(documento):
         data = response.json()
 
         if isinstance(data, list) and len(data) > 0:
-            nombre_completo = data[0].get("TerceroId", {}).get("NombreCompleto", "Nombre no encontrado")
+            nombre_completo = data[0].get("TerceroId", {}).get("NombreCompleto", NOMBRE_NO_ENCONTRADO)
             return nombre_completo
         else:
-            return "Nombre no encontrado"
+            return NOMBRE_NO_ENCONTRADO
     except requests.exceptions.RequestException as e:
         return {"error": str(e)} 
 

@@ -21,9 +21,6 @@ def define_parameters(api):
         'codigoResponsable': fields.Integer(
             required=True
         ),
-        #'rolResponsable': fields.String(
-        #    required=True
-        #),
         'nombreApi': fields.String(
             required=True
         ),
