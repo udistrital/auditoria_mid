@@ -1,7 +1,12 @@
 import os
 import sys
 
-variables = ['API_PORT']
+variables = ['API_PORT', 'ENV']
+
+if os.environ['ENV'] == "dev":
+    origins = ["*"]
+else:
+    origins = ["*.udistrital.edu.co"]
 
 api_cors_config = {
   "origins": ["*"],
