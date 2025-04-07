@@ -176,20 +176,31 @@ def get_one_log(params):
                     documento_usuario_buscado = "Documento no encontrado"
                     nombre_usuario_buscado = NOMBRE_NO_ENCONTRADO
 
-                log_obj = respuesta_log.RespuestaLog(
-                    tipoLog=extracted_data.get("tipoLog"),
-                    fecha=fecha_convertida,
-                    rolResponsable=usuario_log,
-                    nombreResponsable=nombre_usuario_buscado,
-                    documentoResponsable=documento_usuario_buscado,
-                    direccionAccion=extracted_data.get("direccionAccion", "N/A"),
-                    rol=rol_usuario_buscado,
-                    apisConsumen=extracted_data.get("apiConsumen", "N/A"),
-                    peticionRealizada=extract_log_json(extracted_data.get("endpoint"),extracted_data.get("api"),extracted_data.get("metodo"),usuario_log,extracted_data.get("data")),
-                    eventoBD=reemplazar_valores_log(extracted_data.get("metodo"),extracted_data.get("sql_orm")),
-                    tipoError="N/A",
-                    mensajeError=message
-                )
+                    log_obj = respuesta_log.RespuestaLog(
+                        #tipoLog=extracted_data.get("tipoLog"),
+                        #rolResponsable=usuario_log,
+                        #nombreResponsable=nombre_usuario_buscado,
+                        #documentoResponsable=documento_usuario_buscado,
+                        #direccionAccion=extracted_data.get("direccionAccion", "N/A"),
+                        #apisConsumen=extracted_data.get("apiConsumen", "N/A"),
+                        #peticionRealizada=extract_log_json(extracted_data.get("endpoint"),extracted_data.get("api"),extracted_data.get("metodo"),usuario_log,extracted_data.get("data")),
+                        #eventoBD=reemplazar_valores_log(extracted_data.get("metodo"),extracted_data.get("sql_orm")),
+                        #tipoError="N/A",
+                        #mensajeError=message
+                        tipo_log=extracted_data.get("tipoLog"),
+                        fecha=fecha_convertida,
+                        rol_responsable=usuario_log,
+                        nombre_responsable=nombre_usuario_buscado,
+                        documento_responsable=documento_usuario_buscado,
+                        direccion_accion=extracted_data.get("direccionAccion", "N/A"),
+                        rol=rol_usuario_buscado,
+                        apis_consumen=extracted_data.get("apiConsumen", "N/A"),
+                        peticion_realizada=extract_log_json(extracted_data.get("endpoint"),extracted_data.get("api"),extracted_data.get("metodo"),usuario_log,extracted_data.get("data")),
+                        evento_bd=reemplazar_valores_log(extracted_data.get("metodo"),extracted_data.get("sql_orm")),
+                        tipo_error="N/A",
+                        mensaje_error=message
+                    )
+                print(extracted_data)
                 events.append(log_obj)
             return Response(
                 json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': [vars(log) for log in events]}),
@@ -328,6 +339,8 @@ def reemplazar_valores_log(metodo,log):
     if metodo.upper() == "POST":
         patron = r'\[(.*?)\] - (.+)'
         match = re.search(patron, log)
+        print('POST')
+        print(match)
         if match:
             consulta = match.group(1)
             valores = match.group(2).split(", ")
@@ -342,6 +355,8 @@ def reemplazar_valores_log(metodo,log):
     elif metodo.upper() == "PUT":
         patron = r'\[(.*?)\] - (.+)'
         match = re.search(patron, log)
+        print('PUT')
+        print(match)
         if match:
             consulta = match.group(1)
             valores = re.findall(r'`([^`]*)`', match.group(2))
@@ -352,5 +367,30 @@ def reemplazar_valores_log(metodo,log):
         else:
             return "El formato del log PUT no es válido: " + log
         
+    elif metodo.upper() == "GET":
+        patron = r'\[(.*?)\] - (.+)'
+        match = re.search(patron, log)
+        if match:
+            consulta = match.group(1)
+            valores = re.findall(r'`([^`]*)`', match.group(2))
+
+            for i, valor in enumerate(valores, start=1):
+                consulta = consulta.replace(f"${i}", valor.strip())
+            return consulta
+        else:
+            return "El formato del log GET no es válido: " + log
+        
+    elif metodo.upper() == "DELETE":
+        patron = r'\[(.*?)\] - (.+)'
+        match = re.search(patron, log)
+        if match:
+            consulta = match.group(1)
+            valores = re.findall(r'`([^`]*)`', match.group(2))
+
+            for i, valor in enumerate(valores, start=1):
+                consulta = consulta.replace(f"${i}", valor.strip())
+            return consulta
+        else:
+            return "El formato del log DELETE no es válido: " + log
     else:
         return log
