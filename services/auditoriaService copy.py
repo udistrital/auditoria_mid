@@ -58,193 +58,6 @@ def get_all_logs(params):
     except Exception as e:
         return Response(json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}), status=500, mimetype=MIME_TYPE_JSON)
 
-def construir_query(params):
-    '''
-    Genera dinámicamente una cadena de consulta (query string) para CloudWatch Logs Insights con base en los 
-    parámetros recibidos como filtros (método HTTP, correo del usuario, etc.). Esta consulta se usará para obtener 
-    registros de logs que coincidan con esos criterios.
-
-    Parameters
-    ----------
-        filtro_busqueda: texto (por ejemplo GET, POST, etc.).
-        filtro_email_user: correo del usuario que generó el log.
-        limit: cantidad de registros a recuperar.
-
-    Return
-    ------
-        Query en formato string para ejecutar en CloudWatch Logs.
-    '''
-    filtro_busqueda = params["filterPattern"]
-    filtro_email_user = params["emailUser"]
-    limit = int(params.get("limit", 20))
-
-    if filtro_busqueda and filtro_email_user:
-        return f"""
-        fields @timestamp, @message
-        | filter @message like /{filtro_busqueda}/ 
-        and @message like /middleware/
-        and @message like /{filtro_email_user}/
-        | sort @timestamp desc
-        | limit {limit}
-        """
-    elif filtro_busqueda:
-        return f"""
-        fields @timestamp, @message
-        | filter @message like /{filtro_busqueda}/
-        and @message like /middleware/
-        | sort @timestamp desc
-        | limit {limit}
-        """
-    else:
-        raise ValueError("El parámetro del método HTTP o el correo del usuario son obligatorios.")
-
-def convertir_tiempo_a_utc(start_str, end_str, timezone_str='America/Bogota'):
-    '''
-    Convierte una fecha y hora en formato local (por ejemplo, hora de Bogotá) al formato UTC requerido por AWS CloudWatch. 
-    Esto es necesario porque CloudWatch Logs opera en UTC.
-
-    Parameters
-    ----------
-        datetime en hora local (ej. "2025-04-12 00:00").
-        Zona horaria local (America/Bogota).
-
-    Return
-    ------
-        Timestamp en formato UTC (epoch seconds) para consultas en AWS.
-    '''
-    local_tz = timezone(timezone_str)
-    start = datetime.strptime(start_str, "%Y-%m-%d %H:%M")
-    end = datetime.strptime(end_str, "%Y-%m-%d %H:%M")
-    return int(local_tz.localize(start).astimezone(utc).timestamp()), int(local_tz.localize(end).astimezone(utc).timestamp())
-
-
-def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
-    '''
-    Lanza una consulta a CloudWatch Logs Insights y espera hasta obtener el resultado.
-    Es una función bloqueante (usa while) que consulta periódicamente si el resultado está listo.
-
-    Parameters
-    ----------
-        client: cliente AWS Boto3 para CloudWatch Logs.
-        query_string: string generado previamente con filtros.
-        log_group: nombre del grupo de logs.
-        start_time y end_time: tiempo en formato UTC (epoch seconds).
-
-    Return
-    ------
-        Diccionario con los resultados de la query (status, results, etc.).
-    '''
-    response = client.start_query(
-        logGroupName=log_group,
-        startTime=start_time,
-        endTime=end_time,
-        queryString=query_string
-    )
-    query_id = response['queryId']
-    while True:
-        result = client.get_query_results(queryId=query_id)
-        if result['status'] in ['Complete', 'Failed', 'Cancelled']:
-            return result
-        time.sleep(1)
-
-
-def procesar_logs(results):
-    '''
-    Transforma los logs crudos obtenidos desde CloudWatch en objetos estructurados (RespuestaLog).
-    Extrae y limpia datos del mensaje del log, enriquece con información del usuario (nombre, documento, rol)
-    y construye el objeto final.
-
-    Parameters
-    ----------
-        Resultado de logs (lista de logs crudos de AWS).
-        Funciones auxiliares: extract_log_data, buscar_user_rol, buscar_nombre_user, etc.
-
-    Return
-    ------
-        Lista de objetos estructurados (RespuestaLog) listos para enviar al frontend o API.
-    '''
-    eventos = []
-    for log in results:
-        try:
-            message = next(item['value'] for item in log if item['field'] == '@message')
-            extracted_data = extract_log_data(message)
-
-            fecha = extracted_data.get("fecha", "")
-            fecha_convertida = ""
-            try:
-                fecha_convertida = datetime.strptime(fecha, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d %H:%M:%S")
-            except Exception:
-                pass
-
-            usuario_log = extracted_data.get("usuario", "").strip()
-            if usuario_log not in ["N/A", "Error", "Error WSO2", ERROR_WSO2_SIN_USUARIO, ""]:
-                usuario_log += "@udistrital.edu.co"
-            else:
-                usuario_log = ERROR_WSO2_SIN_USUARIO
-
-            if usuario_log != ERROR_WSO2_SIN_USUARIO:
-                resultado = buscar_user_rol(usuario_log)
-                if USUARIO_NO_REGISTRADO in resultado:
-                    rol = "Rol no encontrado"
-                    doc = "Documento no encontrado"
-                    nombre = NOMBRE_NO_ENCONTRADO
-                elif "error" in resultado:
-                    rol = doc = nombre = "Error"
-                else:
-                    rol = resultado.get("roles")
-                    doc = resultado.get("documento")
-                    nombre = buscar_nombre_user(doc)
-            else:
-                rol = "Rol no encontrado"
-                doc = "Documento no encontrado"
-                nombre = NOMBRE_NO_ENCONTRADO
-
-            log_obj = respuesta_log.RespuestaLog(
-                tipo_log=extracted_data.get("tipoLog"),
-                fecha=fecha_convertida,
-                rol_responsable=usuario_log,
-                nombre_responsable=nombre,
-                documento_responsable=doc,
-                direccion_accion=extracted_data.get("direccionAccion", "N/A"),
-                rol=rol,
-                apis_consumen=extracted_data.get("apiConsumen", "N/A"),
-                peticion_realizada=extract_log_json(
-                    extracted_data.get("endpoint"),
-                    extracted_data.get("api"),
-                    extracted_data.get("metodo"),
-                    usuario_log,
-                    extracted_data.get("data")
-                ),
-                evento_bd=reemplazar_valores_log(extracted_data.get("metodo"), extracted_data.get("sql_orm")),
-                tipo_error="N/A",
-                mensaje_error=message
-            )
-            eventos.append(log_obj)
-        except Exception as e:
-            print(f"Error procesando log: {e}")
-    return eventos
-
-
-def paginar_eventos(events, page, limit):
-    '''
-    Realiza una paginación en memoria sobre una lista de logs ya procesados. Extrae solo el conjunto de logs correspondientes a la página solicitada.
-
-    Parameters
-    ----------
-        eventos: lista completa de logs.
-        page: número de página actual.
-        limit: número de registros por página.
-
-    Return
-    ------
-        Sublista de logs correspondiente a la página (eventos[start:end]).
-    '''
-    start_idx = (page - 1) * limit
-    end_idx = start_idx + limit
-    paged_logs = events[start_idx:end_idx]
-    total_pages = (len(events) + limit - 1) // limit
-    return paged_logs, total_pages
-
 def get_one_log(params):
     """
         Consulta un solo evento de logs en CloudWatch para un grupo de logs específico con filtros adicionales.
@@ -265,19 +78,132 @@ def get_one_log(params):
         json : Evento de log o información de error.
     """
     try:
-        limit = int(params.get("limit", 10))
-        page = int(params.get("page", 1))
+        entorno_api = ''
 
-        entorno_api = 'prod' if params['environmentApi'] == 'PRODUCTION' else 'test'
-        log_group = f"/ecs/{params['logGroupName']}_{entorno_api}"
-        query_string = construir_query(params)
-        start_time, end_time = convertir_tiempo_a_utc(params['startTime'], params['endTime'])
-        result = ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time)
+        filtro_busqueda=params["filterPattern"]
+        filtro_email_user=params["emailUser"]
+        query_string = ""
+        limit = int(params.get("limit", 10))  # Por defecto 10
+        page = int(params.get("page", 1))     # Por defecto 1
+
+        if filtro_busqueda and filtro_email_user:
+            query_string = """
+            fields @timestamp, @message
+            | filter @message like /{filtro_busqueda}/ 
+                {'and @message like /middleware/' if filtro_busqueda else ''}
+                {'and @message like /' + filtro_email_user + '/' if filtro_email_user else ''}
+            | sort @timestamp desc
+            | limit {}
+            """.format(filtro_busqueda, filtro_email_user,limit)
+        elif filtro_busqueda:
+            query_string = """
+            fields @timestamp, @message
+            | filter @message like /{}/
+            and @message like /middleware/
+            | limit {}
+            | sort @timestamp desc
+            """.format(filtro_busqueda,limit)
+        else:
+            raise ValueError("El parámetro del método HTTP o el correo del usuario son obligatorios.")
+        
+        local_tz = timezone('America/Bogota')  
+        utc_tz = utc
+        if not params.get('startTime') or not params.get('endTime'):
+            raise ValueError("startTime y endTime son obligatorios y deben estar en formato 'YYYY-MM-DD HH:MM'")
+        try:
+            local_start_time = datetime.strptime(params['startTime'], "%Y-%m-%d %H:%M")
+            local_end_time = datetime.strptime(params['endTime'], "%Y-%m-%d %H:%M")
+        except ValueError as e:
+            raise ValueError(f"Formato de fecha inválido: {e}")
+
+        utc_start_time = local_tz.localize(local_start_time).astimezone(utc_tz)
+        utc_end_time = local_tz.localize(local_end_time).astimezone(utc_tz)
+
+        start_time = int(utc_start_time.timestamp())
+        end_time = int(utc_end_time.timestamp())
+
+        if params['environmentApi'] == 'PRODUCTION':
+            entorno_api = 'prod'
+        else:
+            entorno_api = 'test'
+
+        response = client.start_query(
+            logGroupName = f"/ecs/{params['logGroupName']}_{entorno_api}",
+            startTime=start_time,
+            endTime=end_time,
+            queryString=query_string
+        )
+        query_id = response['queryId']
+
+        while True:
+            result = client.get_query_results(queryId=query_id)
+            if result['status'] in ['Complete', 'Failed', 'Cancelled']:
+                break
+            time.sleep(1)
 
         if result['status'] == 'Complete' and result['results']:
-            eventos = procesar_logs(result['results'])
-            paged_logs, total_pages = paginar_eventos(eventos, page, limit)
-            return Response(
+            events = []
+            for log in result['results']:
+                message = next(item['value'] for item in log if item['field'] == '@message')
+                extracted_data = extract_log_data(message)
+                fecha_convertida = ""
+                usuario_log = ""
+                rol_usuario_buscado = ""
+                documento_usuario_buscado = ""
+                nombre_usuario_buscado = ""
+
+                try:
+                    fecha_convertida = datetime.strptime(extracted_data.get("fecha"), "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d %H:%M:%S")
+                except Exception as e:
+                    fecha_convertida = ""
+
+                usuario_sin_espacio = extracted_data.get("usuario", "").strip()
+                if usuario_sin_espacio not in ["N/A", "Error", "Error WSO2", ERROR_WSO2_SIN_USUARIO, ""]:
+                    usuario_log = f"{usuario_sin_espacio}@udistrital.edu.co"
+                else:
+                    usuario_log = ERROR_WSO2_SIN_USUARIO
+
+                if usuario_log not in [ERROR_WSO2_SIN_USUARIO]:
+                    resultado = buscar_user_rol(usuario_log)
+                    
+                    if USUARIO_NO_REGISTRADO in resultado:
+                        rol_usuario_buscado = "Rol no encontrado"
+                        documento_usuario_buscado = "Documento no encontrado"
+                        nombre_usuario_buscado = NOMBRE_NO_ENCONTRADO
+                    elif "error" in resultado:
+                        rol_usuario_buscado = "Error al obtener roles"
+                        documento_usuario_buscado = "Error al obtener documento"
+                        nombre_usuario_buscado = "Error al obtener nombre"
+                    else:
+                        rol_usuario_buscado = resultado.get("roles")
+                        documento_usuario_buscado = resultado.get("documento")
+                        nombre_usuario_buscado = buscar_nombre_user(documento_usuario_buscado)
+                else:
+                    rol_usuario_buscado = "Rol no encontrado"
+                    documento_usuario_buscado = "Documento no encontrado"
+                    nombre_usuario_buscado = NOMBRE_NO_ENCONTRADO
+
+                log_obj = respuesta_log.RespuestaLog(
+                    tipo_log=extracted_data.get("tipoLog"),
+                    fecha=fecha_convertida,
+                    rol_responsable=usuario_log,
+                    nombre_responsable=nombre_usuario_buscado,
+                    documento_responsable=documento_usuario_buscado,
+                    direccion_accion=extracted_data.get("direccionAccion", "N/A"),
+                    rol=rol_usuario_buscado,
+                    apis_consumen=extracted_data.get("apiConsumen", "N/A"),
+                    peticion_realizada=extract_log_json(extracted_data.get("endpoint"),extracted_data.get("api"),extracted_data.get("metodo"),usuario_log,extracted_data.get("data")),
+                    evento_bd=reemplazar_valores_log(extracted_data.get("metodo"),extracted_data.get("sql_orm")),
+                    tipo_error="N/A",
+                    mensaje_error=message
+                )
+                print(extracted_data)
+                print(events)
+                events.append(log_obj)
+                start_idx = (page - 1) * limit
+                end_idx = start_idx + limit
+                paged_logs = events[start_idx:end_idx]
+                return Response(
                 json.dumps({
                     'Status': 'Successful request',
                     'Code': '200',
@@ -285,14 +211,18 @@ def get_one_log(params):
                     'Pagination': {
                         'page': page,
                         'limit': limit,
-                        'total': len(eventos),
-                        'pages': total_pages
+                        'total': len(events),
+                        'pages': (len(events) + limit - 1) // limit
                     }
                 }),
                 status=200,
                 mimetype=MIME_TYPE_JSON
             )
-
+            '''return Response(
+                json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': [vars(log) for log in events]}),
+                status=200,
+                mimetype=MIME_TYPE_JSON
+            )'''
         return Response(
             json.dumps({'Status': 'No logs found or query failed', 'Code': '404', 'Data': []}),
             status=404,

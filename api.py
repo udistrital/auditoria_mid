@@ -1,12 +1,14 @@
 import os
 from flask import Flask
+from flask_cors import cross_origin
+from flask_cors import CORS
 from conf import conf
 from routers import router
 from controllers import error
 conf.check_env()
 
 app = Flask(__name__)
-
+CORS(app, resources={r"/*": {"origins": "*"}})
 router.add_routing(app)
 error.add_error_handler(app)
 

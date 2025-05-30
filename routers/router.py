@@ -10,7 +10,7 @@ def add_routing(app):
     app.register_blueprint(auditoriaController, url_prefix='/v1')
 
 
-healthCheckController = Blueprint('healthCheckController', __name__, url_prefix='/v1')
+healthCheckController = Blueprint('healthCheckController', __name__, url_prefix='/')
 CORS(healthCheckController)
 
 @healthCheckController.route('/')

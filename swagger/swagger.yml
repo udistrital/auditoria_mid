@@ -6,6 +6,8 @@ definitions:
     properties:
       codigoResponsable:
         type: integer
+      entornoApi:
+        type: string
       fechaFin:
         type: string
       fechaInicio:
@@ -14,17 +16,18 @@ definitions:
         type: string
       horaInicio:
         type: string
-      rolResponsable:
+      nombreApi:
         type: string
       tipoLog:
         type: string
     required:
     - codigoResponsable
+    - entornoApi
     - fechaFin
     - fechaInicio
     - horaFin
     - horaInicio
-    - rolResponsable
+    - nombreApi
     - tipoLog
     type: object
 info:

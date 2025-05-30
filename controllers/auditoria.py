@@ -1,5 +1,5 @@
 import os
-from services import auditoriaService 
+from services import auditoriaService
 from flask import json
 from flask import Response
 import boto3, time
@@ -7,7 +7,7 @@ import boto3, time
 def get_all(data):
     """
         Consulta eventos de logs en CloudWatch para un grupo de logs específico en un rango de tiempo
-        
+
         Parameters
         ----------
         ninguno
@@ -21,7 +21,7 @@ def get_all(data):
 def post_buscar_log(data):
     """
         Consulta un log específico en CloudWatch en un rango de tiempo
-        
+
         Parameters
         ----------
         body : json
@@ -31,11 +31,18 @@ def post_buscar_log(data):
         -------
         json : información del log a consultar
     """
-    
+    """response_array=[]
+    try:
+        print("Datos recibidos:", data)
+        return auditoriaService.getOneLog(data)
+    except Exception as e:
+        return False"""
+
     try:
         filtros = {
-            "logGroupName": data.get('nombreApi'), 
-            "environmentApi": data.get('entornoApi'), 
+            # "logGroupName": "/ecs/polux_crud_test",
+            "logGroupName": data.get('nombreApi'),
+            "environmentApi": data.get('entornoApi'),
             "startTime": f"{data['fechaInicio']} {data['horaInicio']}",
             "endTime": f"{data['fechaFin']} {data['horaFin']}",
             "filterPattern": data.get('tipoLog'),
