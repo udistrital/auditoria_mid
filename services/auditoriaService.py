@@ -16,6 +16,7 @@ MIME_TYPE_JSON = "application/json"
 ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
 USUARIO_NO_REGISTRADO ="Usuario no registrado"
 NOMBRE_NO_ENCONTRADO = "Nombre no encontrado"
+LIMIT = 5000
 
 client = boto3.client(
     'logs',
@@ -76,7 +77,7 @@ def construir_query(params):
     '''
     filtro_busqueda = params["filterPattern"]
     filtro_email_user = params["emailUser"]
-    limit = int(params.get("limit", 20))
+    limit = int(params.get("limit", LIMIT))
 
     if filtro_busqueda and filtro_email_user:
         return f"""
@@ -526,4 +527,167 @@ def reemplazar_valores_log(metodo,log):
         else:
             return "El formato del log DELETE no es válido: " + log
     else:
-        return log
+        return
+
+def get_filtered_logs(params):
+    """
+    Obtiene logs filtrados con paginación desde CloudWatch
+    
+    Parameters
+    ----------
+    params : dict
+        Parámetros de filtrado y paginación (nombres en inglés para compatibilidad con AWS)
+        
+    Returns
+    -------
+    Response
+        Respuesta JSON con logs paginados
+    """
+    try:
+        required = ['logGroupName', 'environmentApi', 'startTime', 'endTime']
+        for param in required:
+            if param not in params:
+                raise ValueError(f"Parámetro requerido faltante internamente: {param}")
+
+        # Configuración básica
+        page = int(params.get('page', 1))
+        limit = int(params.get('limit', 10))
+        entorno_api = 'prod' if params['environmentApi'] == 'PRODUCTION' else 'test'
+
+        log_group = f"/ecs/{params['logGroupName']}_{entorno_api}"
+        
+        # Construir query dinámica basada en los filtros
+        query_parts = ["fields @timestamp, @message", "| filter @message like /middleware/"]
+        
+        # Agregar filtros según parámetros
+        if params.get('filterPattern'):
+            query_parts.append(f"| filter @message like /{params['filterPattern']}/")
+        if params.get('emailUser'):
+            query_parts.append(f"| filter @message like /{params['emailUser']}/")
+        if params.get('api'):
+            query_parts.append(f"| filter @message like /{params['api']}/")
+        if params.get('endpoint'):
+            query_parts.append(f"| filter @message like /{params['endpoint']}/")
+        if params.get('ip'):
+            query_parts.append(f"| filter @message like /{params['ip']}/")
+
+        # Orden y límite
+        query_parts.extend([
+            #"| sort @timestamp desc",
+            #f"| limit {min(1000, limit * page)}"  # Solo traemos lo necesario para la página actual
+            "| sort @timestamp desc",
+            f"| limit {limit}",
+            f"| offset {(page - 1) * limit}"
+        ])
+
+        query_string = "\n".join(query_parts)
+
+        # Convertir tiempos
+        start_time, end_time = convertir_tiempo_a_utc(params['startTime'], params['endTime'])
+
+        # Ejecutar consulta
+        result = ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time)
+
+        # 2. CONSULTA PARA CONTAR EL TOTAL DE REGISTROS (sin paginación)
+        count_query_parts = ["fields @timestamp", "| filter @message like /middleware/"]
+
+        if params.get('filterPattern'):
+            count_query_parts.append(f"| filter @message like /{params['filterPattern']}/")
+        if params.get('emailUser'):
+            count_query_parts.append(f"| filter @message like /{params['emailUser']}/")
+        if params.get('api'):
+            count_query_parts.append(f"| filter @message like /{params['api']}/")
+        if params.get('endpoint'):
+            count_query_parts.append(f"| filter @message like /{params['endpoint']}/")
+        if params.get('ip'):
+            count_query_parts.append(f"| filter @message like /{params['ip']}/")
+            
+        count_query_parts.append("| stats count() as total")
+        
+        count_query_string = "\n".join(count_query_parts)
+        count_result = ejecutar_query_cloudwatch(count_query_string, log_group, start_time, end_time)
+        
+        # Obtener el total de registros
+        total_registros = 0
+        if count_result['status'] == 'Complete' and count_result['results']:
+            total_registros = int(count_result['results'][0][0]['value'])  # Extraer el valor del count
+
+        # Procesar resultados paginados
+        if result['status'] == 'Complete' and result['results']:
+            # Procesar logs
+            eventos = procesar_logs(result['results'])
+
+            # Aplicar filtros adicionales en memoria (para mayor precisión)
+            eventos_filtrados = aplicar_filtros_adicionales(eventos, params)
+
+            # Paginar resultados
+            #paged_logs, total_pages = paginar_eventos(eventos_filtrados, page, limit)
+
+            return Response(
+                json.dumps({
+                    'Status': 'Successful request',
+                    'Code': '200',
+                    'Data': [vars(log) for log in eventos_filtrados],
+                    'Pagination': {
+                        'pagina': page,
+                        'limite': limit,
+                        'total': total_registros,
+                        'paginas': (total_registros + limit - 1) // limit
+                    }
+                }),
+                status=200,
+                mimetype=MIME_TYPE_JSON
+            )
+
+        return Response(
+            json.dumps({'Status': 'No logs found or query failed', 'Code': '404', 'Data': []}),
+            status=404,
+            mimetype=MIME_TYPE_JSON
+        )
+
+    except Exception as e:
+        return Response(
+            json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}),
+            status=500,
+            mimetype=MIME_TYPE_JSON
+        )
+
+def aplicar_filtros_adicionales(eventos, params):
+    """
+    Aplica filtros adicionales a los logs ya obtenidos para mayor precisión
+
+    Parameters
+    ----------
+    eventos : list
+        Lista de objetos RespuestaLog
+    params : dict
+        Parámetros de filtrado
+
+    Returns
+    -------
+    list
+        Lista filtrada de logs
+    """
+    filtered = eventos
+
+    # Filtrar por método si está especificado
+    if params.get('filterPattern'):
+        filtered = [log for log in filtered 
+                   if params['filterPattern'].lower() in log.tipo_log.lower()]
+
+    # Filtrar por API si está especificado
+    if params.get('api'):
+        filtered = [log for log in filtered 
+                   if params['api'].lower() in log.peticion_realizada.lower()]
+
+    # Filtrar por endpoint si está especificado
+    if params.get('endpoint'):
+        filtered = [log for log in filtered 
+                   if params['endpoint'].lower() in log.peticion_realizada.lower()]
+
+    # Filtrar por IP si está especificado
+    if params.get('ip'):
+        filtered = [log for log in filtered 
+                   if params['ip'] == log.direccion_accion]
+
+    return filtered
