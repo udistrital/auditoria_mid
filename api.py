@@ -5,6 +5,7 @@ from flask_cors import CORS
 from conf import conf
 from routers import router
 from controllers import error
+import logging
 conf.check_env()
 
 app = Flask(__name__)

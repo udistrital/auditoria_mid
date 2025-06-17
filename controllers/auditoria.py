@@ -109,7 +109,13 @@ def get_logs_filtrados(data):
         # Construir filtros para la consulta
         filtros = {
             "logGroupName": data['nombreApi'],
+            "nombreApi": data['nombreApi'],
+            'fechaInicio': data['fechaInicio'],
+            'horaInicio': data['horaInicio'],
+            'fechaFin': data['fechaFin'],
+            'horaFin': data['horaFin'],
             "environmentApi": data['entornoApi'],
+            "entornoApi": data['entornoApi'],
             "startTime": f"{data['fechaInicio']} {data['horaInicio']}",
             "endTime": f"{data['fechaFin']} {data['horaFin']}",
             "filterPattern": data.get('tipoLog', ''),
