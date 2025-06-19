@@ -6,7 +6,7 @@ class RespuestaLog:
             self, tipo_log, fecha, rol_responsable, nombre_responsable, documento_responsable,
             direccion_accion, rol, apis_consumen, peticion_realizada, evento_bd, tipo_error, mensaje_error
         ):
-        self.tipoLog = tipo_log  
+        self.tipo_log = tipo_log  
         self.fecha = fecha  
         self.rolResponsable = rol_responsable  
         self.nombreResponsable = nombre_responsable  
@@ -21,7 +21,7 @@ class RespuestaLog:
 
     def to_dict(self):
         return {
-            'tipoLog': self.tipoLog,
+            'tipo_log': self.tipo_log,
             'fecha': self.fecha,
             'rolResponsable': self.rolResponsable,
             'nombreResponsable': self.nombreResponsable,
@@ -34,3 +34,8 @@ class RespuestaLog:
             'tipoError': self.tipoError,
             'mensajeError': self.mensajeError
         }
+    def __str__(self):
+        return f"RespuestaLog(attr1={self.tipo_log}, attr2={self.peticionRealizada}, attr2={self.mensajeError}, ...)"
+    
+    def __repr__(self):
+        return self.__str__()

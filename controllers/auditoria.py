@@ -25,7 +25,7 @@ def post_buscar_log(data):
         Parameters
         ----------
         body : json
-            json con parametros como fechaInicio (str), fechaFin (str), tipoLog (str), codigoResponsable (int), rolResponsable (str)
+            json con parametros como fechaInicio (str), fechaFin (str), tipo_log (str), codigoResponsable (int), rolResponsable (str)
 
         Returns
         -------
@@ -45,7 +45,7 @@ def post_buscar_log(data):
             "environmentApi": data.get('entornoApi'),
             "startTime": f"{data['fechaInicio']} {data['horaInicio']}",
             "endTime": f"{data['fechaFin']} {data['horaFin']}",
-            "filterPattern": data.get('tipoLog'),
+            "filterPattern": data.get('tipo_log'),
             "emailUser": data.get('codigoResponsable')
         }
 
@@ -79,7 +79,7 @@ def get_logs_filtrados(data):
         - horaFin: Hora de fin (HH:MM)
         - pagina: Número de página (default: 1)
         - limite: Registros por página (default: 10)
-        - tipoLog: Tipo de log (GET, POST, etc.)
+        - tipo_log: Tipo de log (GET, POST, etc.)
         - codigoResponsable: Email del usuario responsable
         - apiConsumen: API específica que consume el servicio
         - endpoint: Endpoint específico
@@ -118,7 +118,7 @@ def get_logs_filtrados(data):
             "entornoApi": data['entornoApi'],
             "startTime": f"{data['fechaInicio']} {data['horaInicio']}",
             "endTime": f"{data['fechaFin']} {data['horaFin']}",
-            "filterPattern": data.get('tipoLog', ''),
+            "filterPattern": data.get('tipo_log', ''),
             "emailUser": data.get('codigoResponsable', ''),
             "api": data.get('apiConsumen', ''),
             "endpoint": data.get('endpoint', ''),

@@ -75,7 +75,7 @@ class FilterLogs(Resource):
             - horaInicio (str): Hora de inicio en formato hh:mm
             - fechaFin (str): Fecha de fin en formato aaaa-mm-dd
             - horaFin (str): Hora de fin en formato hh:mm
-            - tipoLog (str): Tipo de log (GET, POST, PUT, etc.)
+            - tipo_log (str): Tipo de log (GET, POST, PUT, etc.)
             - codigoResponsable (int): Código del responsable
             - rolResponsable (str): Rol del responsable
 

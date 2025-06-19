@@ -157,6 +157,7 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
     '''
     try:
         # 1. Imprimir la query completa para depuración
+        '''
         logger.info("\n" + "="*50)
         logger.info("QUERY QUE SE ENVÍA A AWS CLOUDWATCH:")
         logger.info(query_string)
@@ -166,6 +167,7 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
         logger.info(f"Grupo de logs: {log_group}")
         logger.info(f"Rango de tiempo: {start_time} a {end_time}")
         
+        '''
         # 3. Ejecutar la consulta normalmente
         response = client.start_query(
             logGroupName=log_group,
@@ -173,19 +175,25 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
             endTime=end_time,
             queryString=query_string
         )
+        '''
         logger.info("Query iniciada en CloudWatch", extra={
             'query_id': response['queryId'],
             'status': 'started'
         })
+        '''
         query_id = response['queryId']
         print(f"ID de consulta en AWS: {query_id}")
-    
+        
         while True:
             result = client.get_query_results(queryId=query_id)
+            '''
+            logger.info("\n" + "="*50)
+            logger.info("RESULTADO!!!!!!!!!!!!!!!:")
+            logger.info(result)
+            logger.info("="*50 + "\n")
+            '''
             if result['status'] in ['Complete', 'Failed', 'Cancelled']:
                 return result
-            time.sleep(1)
-    
     except Exception as e:
         print(f"\nERROR AL EJECUTAR QUERY:\n{query_string}\nERROR: {str(e)}\n")
         raise
@@ -243,8 +251,7 @@ def procesar_logs(results):
                 nombre = NOMBRE_NO_ENCONTRADO
 
             log_obj = respuesta_log.RespuestaLog(
-                tipo_log=extracted_data.get("tipoLog"),
-                tipoLog=extracted_data.get("tipo_log"),
+                tipo_log=extracted_data.get("tipo_log"),
                 fecha=fecha_convertida,
                 rol_responsable=usuario_log,
                 nombre_responsable=nombre,
@@ -320,6 +327,7 @@ def get_one_log(params):
 
         if result['status'] == 'Complete' and result['results']:
             eventos = procesar_logs(result['results'])
+            
             paged_logs, total_pages = paginar_eventos(eventos, page, limit)
             return Response(
                 json.dumps({
@@ -421,7 +429,7 @@ def extract_log_data(log_entry):
         "user_agent": r"user_agent:\s([^\s,]+)",
         "usuario": r"\b, user:\s([^\s,]+)",
         "data": r"data:\s({.*})", 
-        "tipoLog": r"\[([a-zA-Z0-9\._-]+)(?=\.\w+:)",
+        "tipo_log": r"\[([a-zA-Z0-9\._-]+)(?=\.\w+:)",
         "sql_orm": r"sql_orm:\s\{(.*?)\},\s+ip_user:"
     }
 
@@ -590,8 +598,65 @@ def get_filtered_logs(params):
         # Configuración básica
         page = int(params.get('pagina', 1))
         limit = int(params.get('limite', 10))
-        entorno_api = 'prod' if params['entornoApi'] == 'PRODUCTION' else 'test'
+        entorno_api = 'prod' if params['entornoApi'].upper() == 'PRODUCTION' else 'test'
         log_group = f"/ecs/{params['nombreApi']}_{entorno_api}"
+        # Construir y ejecutar query de datos directamente (optimizado)
+        data_query = construir_data_query(params, page, limit)
+        start_time, end_time = convertir_tiempo_a_utc(
+            f"{params['fechaInicio']} {params['horaInicio']}",
+            f"{params['fechaFin']} {params['horaFin']}"
+        )
+
+
+        data_result = ejecutar_query_cloudwatch(data_query, log_group, start_time, end_time)
+        
+        if data_result['status'] == 'Complete' and data_result['results']:
+            eventos = procesar_logs(data_result['results'])
+            
+            
+            logger.info("\n" + "="*50)
+            logger.info("procesar_logs!!!!!!!!!!!!!!!:")
+            logger.info(eventos)
+            logger.info("="*50 + "\n")
+            # Obtener el total de registros (puedes usar una query count separada si es necesario)
+            total_query = f"stats count(*) | limit 1"
+            total_result = ejecutar_query_cloudwatch(total_query, log_group, start_time, end_time)
+            total_registros = int(total_result['results'][0][0]['value']) if total_result['status'] == 'Complete' else len(eventos)
+            
+            # Aplicar filtros adicionales mínimos
+            eventos_filtrados = aplicar_filtros_adicionales(eventos, params)
+            
+            return Response(
+                json.dumps({
+                    'Status': 'Successful request',
+                    'Code': '200',
+                    'Data': [vars(log) for log in eventos_filtrados],
+                    'Pagination': {
+                        'pagina': page,
+                        'limite': limit,
+                        'total': total_registros,
+                        'paginas': (total_registros + limit - 1) // limit
+                    }
+                }),
+                status=200,
+                mimetype=MIME_TYPE_JSON
+            )
+            
+        return Response(
+            json.dumps({
+                'Status': 'No logs found',
+                'Code': '404',
+                'Data': [],
+                'Pagination': {
+                    'pagina': page,
+                    'limite': limit,
+                    'total': 0,
+                    'paginas': 0
+                }
+            }),
+            status=404,
+            mimetype=MIME_TYPE_JSON
+        )
         
         # 1. PRIMERO: Consulta solo para contar el total de registros
         count_query = construir_count_query(params)
@@ -617,10 +682,9 @@ def get_filtered_logs(params):
                 eventos_filtrados = aplicar_filtros_adicionales(eventos, params)
                 
                 logger.info("\n" + "="*50)
-                logger.info("params:")
-                logger.info(params)
+                logger.info("count_result:")
+                logger.info(count_result)
                 logger.info("="*50 + "\n")
-                
                 
                 logger.info("\n" + "="*50)
                 logger.info("EVENTOS:")
@@ -694,7 +758,7 @@ def construir_count_query(params):
     return query
 
 def construir_data_query(params, page, limit):
-    """Construye y loguea la query de datos"""
+    """Construye y loguea la query de datos con paginación adecuada"""
     query_parts = ["fields @timestamp, @message", "| filter @message like /middleware/"]
     
     if params.get('tipo_log'):
@@ -705,16 +769,18 @@ def construir_data_query(params, page, limit):
         usuario_escaped = re.escape(params['codigoResponsable'])
         query_parts.append(f'| filter @message like /{usuario_escaped}/')
     
+    # Paginación correcta en CloudWatch Insights
     query_parts.extend([
         "| sort @timestamp desc",
         f"| limit {limit}",
     ])
     
     query = "\n".join(query_parts)
-    
-    print("\nQUERY DE DATOS CONSTRUIDA:")
-    print(query)
-    print(f"Página: {page}, Límite: {limit}")
+    '''
+    logger.info("\nQUERY DE DATOS CONSTRUIDA:")
+    logger.info(query)
+    logger.info(f"Página: {page}, Límite: {limit}")
+    '''
     
     return query
 

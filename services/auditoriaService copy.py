@@ -184,7 +184,7 @@ def get_one_log(params):
                     nombre_usuario_buscado = NOMBRE_NO_ENCONTRADO
 
                 log_obj = respuesta_log.RespuestaLog(
-                    tipo_log=extracted_data.get("tipoLog"),
+                    tipo_log=extracted_data.get("tipo_log"),
                     fecha=fecha_convertida,
                     rol_responsable=usuario_log,
                     nombre_responsable=nombre_usuario_buscado,
@@ -307,7 +307,7 @@ def extract_log_data(log_entry):
         "user_agent": r"user_agent:\s([^\s,]+)",
         "usuario": r"\b, user:\s([^\s,]+)",
         "data": r"data:\s({.*})", 
-        "tipoLog": r"\[([a-zA-Z0-9\._-]+)(?=\.\w+:)",
+        "tipo_log": r"\[([a-zA-Z0-9\._-]+)(?=\.\w+:)",
         "sql_orm": r"sql_orm:\s\{(.*?)\},\s+ip_user:"
     }
 

@@ -49,7 +49,7 @@
                     }
                 },
                 "summary": "Filtra los logs de AWS con base en par\u00e1metros espec\u00edficos",
-                "description": "Parameters\n----------\nrequest : json\n    Un JSON que contiene:\n    - fechaInicio (str): Fecha de inicio en formato aaaa-mm-dd\n    - horaInicio (str): Hora de inicio en formato hh:mm\n    - fechaFin (str): Fecha de fin en formato aaaa-mm-dd\n    - horaFin (str): Hora de fin en formato hh:mm\n    - tipoLog (str): Tipo de log (GET, POST, PUT, etc.)\n    - codigoResponsable (int): C\u00f3digo del responsable\n    - rolResponsable (str): Rol del responsable\n\nReturns\n-------\nResponse\n    Respuesta con los logs filtrados en formato JSON.",
+                "description": "Parameters\n----------\nrequest : json\n    Un JSON que contiene:\n    - fechaInicio (str): Fecha de inicio en formato aaaa-mm-dd\n    - horaInicio (str): Hora de inicio en formato hh:mm\n    - fechaFin (str): Fecha de fin en formato aaaa-mm-dd\n    - horaFin (str): Hora de fin en formato hh:mm\n    - tipo_log (str): Tipo de log (GET, POST, PUT, etc.)\n    - codigoResponsable (int): C\u00f3digo del responsable\n    - rolResponsable (str): Rol del responsable\n\nReturns\n-------\nResponse\n    Respuesta con los logs filtrados en formato JSON.",
                 "operationId": "post_filter_logs",
                 "parameters": [
                     {
@@ -94,7 +94,7 @@
                 "horaFin",
                 "horaInicio",
                 "nombreApi",
-                "tipoLog"
+                "tipo_log"
             ],
             "properties": {
                 "fechaInicio": {
@@ -109,7 +109,7 @@
                 "horaFin": {
                     "type": "string"
                 },
-                "tipoLog": {
+                "tipo_log": {
                     "type": "string"
                 },
                 "codigoResponsable": {
