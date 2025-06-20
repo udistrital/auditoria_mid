@@ -580,7 +580,7 @@ def reemplazar_valores_log(metodo,log):
     else:
         return
 
-def get_filtered_logs(params):
+def get_filtered_logs2(params):
     """
     Obtiene logs filtrados con paginación desde CloudWatch
     
@@ -785,7 +785,7 @@ def construir_data_query(params, page, limit):
     return query
 
 
-def aplicar_filtros_adicionales(eventos, params):
+def aplicar_filtros_adicionales2(eventos, params):
     """
     Aplica filtros adicionales a los logs ya obtenidos para mayor precisión
 
@@ -823,4 +823,130 @@ def aplicar_filtros_adicionales(eventos, params):
         filtered = [log for log in filtered 
                    if params['ip'] == log.direccion_accion]
 
+    return filtered
+
+def get_filtered_logs(params):
+    try:
+        # Configuración básica
+        page = int(params.get('pagina', 1))
+        limit = int(params.get('limite', 100))
+        entorno_api = 'prod' if params['entornoApi'].upper() == 'PRODUCTION' else 'test'
+        log_group = f"/ecs/{params['nombreApi']}_{entorno_api}"
+        
+        # 1. Primero obtener los logs sin filtros adicionales para diagnóstico
+        query = construir_data_query(params, page, limit)
+        start_time, end_time = convertir_tiempo_a_utc(
+            f"{params['fechaInicio']} {params['horaInicio']}",
+            f"{params['fechaFin']} {params['horaFin']}"
+        )
+        
+        result = ejecutar_query_cloudwatch(query, log_group, start_time, end_time)
+        
+        # Agregar logs de depuración
+        print("\n=== RESULTADO CRUDO DE AWS ===")
+        print(f"Estado: {result.get('status')}")
+        print(f"Número de resultados: {len(result.get('results', []))}")
+        
+        if result['status'] == 'Complete' and result['results']:
+            eventos = procesar_logs(result['results'])
+            
+            print("\n=== EVENTOS PROCESADOS ===")
+            print(f"Número de eventos: {len(eventos)}")
+            if eventos:
+                print("Primer evento:", eventos[0])
+            
+            # Aplicar filtros (comentar temporalmente para diagnóstico)
+            eventos_filtrados = aplicar_filtros_adicionales(eventos, params)
+            
+            print("\n=== EVENTOS FILTRADOS ===")
+            print(f"Número de eventos filtrados: {len(eventos_filtrados)}")
+            
+            # Obtener el total de registros
+            total_query = construir_count_query(params)
+            total_result = ejecutar_query_cloudwatch(total_query, log_group, start_time, end_time)
+            total_registros = int(total_result['results'][0][0]['value']) if total_result['status'] == 'Complete' else len(eventos)
+            
+            return Response(
+                json.dumps({
+                    'Status': 'Successful request',
+                    'Code': '200',
+                    'Data': [vars(log) for log in eventos_filtrados],
+                    'Pagination': {
+                        'pagina': page,
+                        'limite': limit,
+                        'total': total_registros,
+                        'paginas': (total_registros + limit - 1) // limit
+                    }
+                }),
+                status=200,
+                mimetype=MIME_TYPE_JSON
+            )
+        
+        return Response(
+            json.dumps({
+                'Status': 'No logs found',
+                'Code': '404',
+                'Data': [],
+                'Pagination': {
+                    'pagina': page,
+                    'limite': limit,
+                    'total': 0,
+                    'paginas': 0
+                }
+            }),
+            status=404,
+            mimetype=MIME_TYPE_JSON
+        )
+        
+    except Exception as e:
+        print(f"\n=== ERROR EN get_filtered_logs ===")
+        print(f"Tipo de error: {type(e)}")
+        print(f"Mensaje: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        
+        return Response(
+            json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}),
+            status=500,
+            mimetype=MIME_TYPE_JSON
+        )
+
+def aplicar_filtros_adicionales(eventos, params):
+    """Versión modificada para diagnóstico"""
+    if not eventos:
+        print("\n=== ADVERTENCIA: eventos vacíos antes de filtrar ===")
+        return []
+    
+    filtered = eventos
+    
+    print("\n=== PARÁMETROS DE FILTRADO ===")
+    print(f"Params recibidos: {params}")
+    
+    # Filtrar por método si está especificado
+    if params.get('tipo_log'):
+        print(f"\nFiltrando por tipo_log: {params['tipo_log']}")
+        filtered = [log for log in filtered 
+                   if params['tipo_log'].lower() in log.tipo_log.lower()]
+        print(f"Registros después de filtrar por tipo_log: {len(filtered)}")
+    
+    # Filtrar por API si está especificado
+    if params.get('api'):
+        print(f"\nFiltrando por api: {params['api']}")
+        filtered = [log for log in filtered 
+                   if params['api'].lower() in log.peticion_realizada.lower()]
+        print(f"Registros después de filtrar por api: {len(filtered)}")
+    
+    # Filtrar por endpoint si está especificado
+    if params.get('endpoint'):
+        print(f"\nFiltrando por endpoint: {params['endpoint']}")
+        filtered = [log for log in filtered 
+                   if params['endpoint'].lower() in log.peticion_realizada.lower()]
+        print(f"Registros después de filtrar por endpoint: {len(filtered)}")
+    
+    # Filtrar por IP si está especificado
+    if params.get('ip'):
+        print(f"\nFiltrando por ip: {params['ip']}")
+        filtered = [log for log in filtered 
+                   if params['ip'] == log.direccion_accion]
+        print(f"Registros después de filtrar por ip: {len(filtered)}")
+    
     return filtered

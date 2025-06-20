@@ -31,7 +31,7 @@ definitions:
     - tipo_log
     type: object
 info:
-  description: Api mid para la obtenciÃ³n de logs de AWS
+  description: Api mid para la obtención de logs de AWS
   title: auditoria_mid
   version: '1.0'
 paths:
@@ -61,7 +61,7 @@ paths:
         \ (str): Hora de inicio en formato hh:mm\n    - fechaFin (str): Fecha de fin\
         \ en formato aaaa-mm-dd\n    - horaFin (str): Hora de fin en formato hh:mm\n\
         \    - tipo_log (str): Tipo de log (GET, POST, PUT, etc.)\n    - codigoResponsable\
-        \ (int): CÃ³digo del responsable\n    - rolResponsable (str): Rol del responsable\n\
+        \ (int): Código del responsable\n    - rolResponsable (str): Rol del responsable\n\
         \nReturns\n-------\nResponse\n    Respuesta con los logs filtrados en formato\
         \ JSON."
       operationId: post_filter_logs
@@ -82,7 +82,84 @@ paths:
           description: Not found
         '500':
           description: Server error
-      summary: Filtra los logs de AWS con base en parÃ¡metros especÃ­ficos
+      summary: Filtra los logs de AWS con base en parámetros específicos
+      tags:
+      - auditoria
+  /auditoria/buscarLogsFiltrados:
+    get:
+      description: Permite búsqueda incremental con paginación para mejor performance.
+      operationId: get_filter_logs_paginated
+      parameters:
+      - description: Dirección IP
+        in: query
+        name: ip
+        type: string
+      - description: Endpoint específico
+        in: query
+        name: endpoint
+        type: string
+      - description: API específica
+        in: query
+        name: api
+        type: string
+      - description: Email del usuario responsable
+        in: query
+        name: codigoResponsable
+        type: string
+      - description: Método HTTP (GET, POST, PUT, DELETE)
+        in: query
+        name: tipo_log
+        type: string
+      - default: 10
+        description: Registros por página
+        in: query
+        name: limit
+        type: string
+      - default: 1
+        description: Número de página
+        in: query
+        name: page
+        type: string
+      - description: Hora de fin (HH:MM)
+        in: query
+        name: horaFin
+        required: true
+        type: string
+      - description: Fecha de fin (YYYY-MM-DD)
+        in: query
+        name: fechaFin
+        required: true
+        type: string
+      - description: Hora de inicio (HH:MM)
+        in: query
+        name: horaInicio
+        required: true
+        type: string
+      - description: Fecha de inicio (YYYY-MM-DD)
+        in: query
+        name: fechaInicio
+        required: true
+        type: string
+      - description: Entorno (SANDBOX, PRODUCTION, TEST)
+        in: query
+        name: entornoApi
+        required: true
+        type: string
+      - description: 'Nombre del API (ej: polux_crud)'
+        in: query
+        name: nombreApi
+        required: true
+        type: string
+      responses:
+        '200':
+          description: Success
+        '400':
+          description: Bad request
+        '404':
+          description: Not found
+        '500':
+          description: Server error
+      summary: Filtra y pagina logs de AWS con base en parámetros en la URL
       tags:
       - auditoria
 produces:
