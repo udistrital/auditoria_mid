@@ -46,7 +46,9 @@ def post_buscar_log(data):
             "startTime": f"{data['fechaInicio']} {data['horaInicio']}",
             "endTime": f"{data['fechaFin']} {data['horaFin']}",
             "filterPattern": data.get('tipo_log'),
-            "emailUser": data.get('codigoResponsable')
+            "emailUser": data.get('codigoResponsable'),
+            "page": data.get('pagina'),
+            "limit": data.get('limite', 5000),
         }
 
         return auditoriaService.get_one_log(filtros)
