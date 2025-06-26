@@ -1,5 +1,5 @@
 import os
-from services import auditoriaService
+from services import auditoriaService, auditoriaServiceLog
 from flask import json
 from flask import Response
 import boto3, time
@@ -47,11 +47,12 @@ def post_buscar_log(data):
             "endTime": f"{data['fechaFin']} {data['horaFin']}",
             "filterPattern": data.get('tipo_log'),
             "emailUser": data.get('codigoResponsable'),
+            "palabraClave": data.get('palabraClave'),
             "page": data.get('pagina'),
             "limit": data.get('limite', 5000),
         }
 
-        return auditoriaService.get_one_log(filtros)
+        return auditoriaServiceLog.get_one_log(filtros)
     except KeyError as e:
         return Response(
             json.dumps({'Status': 'Bad Request', 'Code': '400', 'Error': f"Missing parameter: {str(e)}"}),
@@ -125,6 +126,7 @@ def get_logs_filtrados(data):
             "api": data.get('apiConsumen', ''),
             "endpoint": data.get('endpoint', ''),
             "ip": data.get('direccionIp', ''),
+            "palabraClave": data.get('palabraClave', ''),
             "page": pagina,
             "limit": limite
         }
