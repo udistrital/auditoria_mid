@@ -15,7 +15,7 @@ MIME_TYPE_JSON = "application/json"
 ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
 USUARIO_NO_REGISTRADO = "Usuario no registrado"
 NOMBRE_NO_ENCONTRADO = "Nombre no encontrado"
-LIMIT = 50
+LIMIT = 5000
 
 # Configurar logger
 logging.basicConfig(level=logging.INFO)
@@ -24,7 +24,11 @@ logger = logging.getLogger(__name__)
 client = boto3.client(
     "logs",
     region_name="us-east-1",
-    config=Config(retries={"max_attempts": 3, "mode": "adaptive"}),
+    config=Config(
+        retries={"max_attempts": 3, "mode": "adaptive"},
+        connect_timeout=1,
+        read_timeout=5
+    ),
     aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
     aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
 )
@@ -40,14 +44,7 @@ def get_filtered_logs(params):
     """
     try:
         # Validar parámetros requeridos
-        required_params = [
-            "nombreApi",
-            "entornoApi",
-            "fechaInicio",
-            "horaInicio",
-            "fechaFin",
-            "horaFin",
-        ]
+        required_params = ["nombreApi","entornoApi","fechaInicio","horaInicio","fechaFin","horaFin",]
         for param in required_params:
             if param not in params:
                 return Response(
@@ -65,6 +62,7 @@ def get_filtered_logs(params):
         # Configurar paginación
         page = max(1, int(params.get("page", params.get("pagina", 1))))
         limit = min(max(1, int(params.get("limit", params.get("limite", 100)))), 10000)
+        offset = (page - 1) * limit
 
         # Determinar entorno y grupo de logs
         entorno_api = "prod" if params["entornoApi"].upper() == "PRODUCTION" else "test"
@@ -77,7 +75,7 @@ def get_filtered_logs(params):
         )
 
         # 1. Obtener datos paginados
-        data_query = construir_data_query(params, page, limit)
+        data_query = construir_data_query(params, offset, limit)
         data_result = ejecutar_query_cloudwatch(
             data_query, log_group, start_time, end_time
         )
@@ -278,12 +276,7 @@ def construir_data_query(params, page, limit):
     elif filtro_busqueda:
         query_parts.append(f"| filter @message like /{filtro_busqueda}/")
     # Paginación correcta en CloudWatch Insights
-    query_parts.extend(
-        [
-            "| sort @timestamp desc",
-            f"| limit {LIMIT}",
-        ]
-    )
+    query_parts.extend(["| sort @timestamp desc",f"| limit {LIMIT}",])
     query = "\n".join(query_parts)
     return query
 
@@ -475,11 +468,7 @@ def buscar_user_rol(user_email):
             response.raise_for_status()
 
             roles_a_excluir = ["Internal/everyone"]
-            filtered_roles = [
-                role
-                for role in response_data.get("role", [])
-                if role not in roles_a_excluir
-            ]
+            filtered_roles = [ role for role in response_data.get("role", []) if role not in roles_a_excluir ]
 
             return {
                 "roles": ", ".join(filtered_roles),
@@ -513,31 +502,19 @@ def aplicar_filtros_adicionales(eventos, params):
     # Filtrar por método si está especificado
     if params.get("tipo_log"):
         print(f"\nFiltrando por tipo_log: {params['tipo_log']}")
-        filtered = [
-            log
-            for log in filtered
-            if params["tipo_log"].lower() in log.tipo_log.lower()
-        ]
+        filtered = [ log for log in filtered if params["tipo_log"].lower() in log.tipo_log.lower() ]
         print(f"Registros después de filtrar por tipo_log: {len(filtered)}")
 
     # Filtrar por API si está especificado
     if params.get("api"):
         print(f"\nFiltrando por api: {params['api']}")
-        filtered = [
-            log
-            for log in filtered
-            if params["api"].lower() in log.peticion_realizada.lower()
-        ]
+        filtered = [ log for log in filtered if params["api"].lower() in log.peticion_realizada.lower() ]
         print(f"Registros después de filtrar por api: {len(filtered)}")
 
     # Filtrar por endpoint si está especificado
     if params.get("endpoint"):
         print(f"\nFiltrando por endpoint: {params['endpoint']}")
-        filtered = [
-            log
-            for log in filtered
-            if params["endpoint"].lower() in log.peticion_realizada.lower()
-        ]
+        filtered = [ log for log in filtered if params["endpoint"].lower() in log.peticion_realizada.lower() ]
         print(f"Registros después de filtrar por endpoint: {len(filtered)}")
 
     # Filtrar por IP si está especificado
