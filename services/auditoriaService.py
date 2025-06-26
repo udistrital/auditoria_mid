@@ -26,8 +26,8 @@ client = boto3.client(
     region_name="us-east-1",
     config=Config(
         retries={"max_attempts": 3, "mode": "adaptive"},
-        connect_timeout=1,
-        read_timeout=5
+        connect_timeout=10,
+        read_timeout=30
     ),
     aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
     aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
@@ -90,10 +90,6 @@ def get_filtered_logs(params):
             count_query, log_group, start_time, end_time
         )
         print(count_result)
-        print(list(count_result.keys()))
-        print(count_result["results"])
-        print(count_result["results"][0])
-        print(count_result["results"][0][0])
 
         # Procesar resultados
         if data_result["status"] == "Complete" and data_result["results"]:
