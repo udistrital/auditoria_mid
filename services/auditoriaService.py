@@ -10,6 +10,7 @@ from pytz import timezone, utc
 from datetime import datetime
 import logging
 from botocore.config import Config
+import time
 
 MIME_TYPE_JSON = "application/json"
 ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
@@ -26,8 +27,8 @@ client = boto3.client(
     region_name="us-east-1",
     config=Config(
         retries={"max_attempts": 3, "mode": "adaptive"},
-        connect_timeout=10,
-        read_timeout=30
+        connect_timeout=5,
+        read_timeout=8,
     ),
     aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
     aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
@@ -85,22 +86,24 @@ def get_filtered_logs(params):
         # print(list(data_result.keys()))
         # print(data_result['status'])
         # 2. Obtener conteo total para paginación
-        count_query = construir_count_query(data_query)
+        '''count_query = construir_count_query(data_query)
         count_result = ejecutar_query_cloudwatch(
             count_query, log_group, start_time, end_time
         )
         print(count_result)
-
+        '''
         # Procesar resultados
         if data_result["status"] == "Complete" and data_result["results"]:
             eventos = procesar_logs(data_result["results"])
             eventos_filtrados = aplicar_filtros_adicionales(eventos, params)
             total_registros = len(eventos_filtrados)
             # Obtener total de registros
-            if count_result["status"] == "Complete" and count_result["results"]:
+            '''if count_result["status"] == "Complete" and count_result["results"]:
                 total_registros = int(count_result["results"][0][0]["value"])
             else:
                 total_registros = len(eventos_filtrados)
+            '''
+            total_registros = len(eventos_filtrados)
 
             return Response(
                 json.dumps(
