@@ -110,13 +110,14 @@ def get_filtered_logs(params):
                     {
                         "Status": "Successful request",
                         "Code": "200",
-                        "Data": [vars(log) for log in eventos_filtrados],
+                        "Data": [],# [vars(log) for log in eventos_filtrados],
                         "Pagination": {
                             "pagina": page,
                             "limite": limit,
                             "total": len(eventos_filtrados),
                             "total registros": total_registros,
                             "paginas": (total_registros + limit - 1) // limit,
+                            "Resultados": data_result["results"],
                         },
                     }
                 ),
@@ -249,16 +250,18 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
         """
         query_id = response["queryId"]
         print(f"ID de consulta en AWS: {query_id}")
-
+        #start_total_time = time.time()  # Tiempo inicial total
+        #query_start_time = time.time()  # Tiempo inicial de cada consulta
         while True:
             result = client.get_query_results(queryId=query_id)
             """
-            logger.info("\n" + "="*50)
-            logger.info("RESULTADO!!!!!!!!!!!!!!!:")
-            logger.info(result)
-            logger.info("="*50 + "\n")
+            query_time = time.time() - query_start_time  # Tiempo de esta consulta específica
+            total_time = time.time() - start_total_time  # Tiempo total acumulado
+            print(f"Última consulta tardó: {query_time:.2f} segundos | Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
+            query_start_time = time.time()
             """
             if result["status"] in ["Complete", "Failed", "Cancelled"]:
+                #print(f"Consulta completada. Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
                 return result
     except Exception as e:
         print(f"\nERROR AL EJECUTAR QUERY:\n{query_string}\nERROR: {str(e)}\n")
