@@ -265,12 +265,20 @@ def construir_data_query(params, page, limit):
     """Construye y loguea la query de datos con paginación adecuada"""
     filtro_busqueda = re.escape(params["filterPattern"])
     filtro_email_user = re.escape(params["emailUser"])
+    filtro_palabra_clave = re.escape(params.get('palabraClave'))
     query_parts = ["fields @timestamp, @message", "| filter @message like /middleware/"]
     if filtro_busqueda and filtro_email_user:
-        query_parts.append(f"| filter @message like /{filtro_busqueda}/")
         query_parts.append(f"| filter @message like /{filtro_email_user}/")
-    elif filtro_busqueda:
+    if filtro_busqueda:
         query_parts.append(f"| filter @message like /{filtro_busqueda}/")
+    if re.escape(params.get('api')):
+        query_parts.append(f"| filter @message like /{params['api']}/")
+    if re.escape(params.get('endpoint')):
+        query_parts.append(f"| filter @message like /{params['endpoint']}/")
+    if re.escape(params.get('ip')):
+        query_parts.append(f"| filter @message like /{params['ip']}/")
+    if filtro_palabra_clave:
+        query_parts.append(f"| filter @message like /{filtro_palabra_clave}/")
     # Paginación correcta en CloudWatch Insights
     query_parts.extend(["| sort @timestamp desc",f"| limit {LIMIT}",])
     query = "\n".join(query_parts)
@@ -493,6 +501,7 @@ def aplicar_filtros_adicionales(eventos, params):
     filtered = eventos
 
     print("\n=== PARÁMETROS DE FILTRADO ===")
+    print(f"Params recibidos: {filtered}")
     print(f"Params recibidos: {params}")
 
     # Filtrar por método si está especificado
@@ -518,6 +527,11 @@ def aplicar_filtros_adicionales(eventos, params):
         print(f"\nFiltrando por ip: {params['ip']}")
         filtered = [log for log in filtered if params["ip"] == log.direccion_accion]
         print(f"Registros después de filtrar por ip: {len(filtered)}")
+    # Filtrar por IP si está especificado
+    if params.get("ip"):
+        print(f"\nFiltrando por palabra clave: {params['palabraClave']}")
+        filtered = [log for log in filtered if params["palabraClave"] in log.data_error]
+        print(f"Registros después de filtrar por palabra clave: {len(filtered)}")
 
     return filtered
 
