@@ -111,13 +111,13 @@ def get_filtered_logs(params):
                         "Status": "Successful request",
                         "Code": "200",
                         "Data": [],# [vars(log) for log in eventos_filtrados],
+                        "Resultados": [log[1]["value"] for log in data_result["results"]],
                         "Pagination": {
                             "pagina": page,
                             "limite": limit,
                             "total": len(eventos_filtrados),
                             "total registros": total_registros,
                             "paginas": (total_registros + limit - 1) // limit,
-                            "Resultados": data_result["results"],
                         },
                     }
                 ),
