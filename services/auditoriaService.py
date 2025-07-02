@@ -103,21 +103,19 @@ def get_filtered_logs(params):
             else:
                 total_registros = len(eventos_filtrados)
             '''
-            total_registros = len(eventos_filtrados)
 
             return Response(
                 json.dumps(
                     {
                         "Status": "Successful request",
                         "Code": "200",
-                        "Data": [],# [vars(log) for log in eventos_filtrados],
+                        "Data": [vars(log) for log in eventos_filtrados],
                         "Pagination": {
                             "pagina": page,
                             "limite": limit,
                             "total": len(eventos_filtrados),
                             "total registros": total_registros,
                             "paginas": (total_registros + limit - 1) // limit,
-                            "Resultados": data_result["results"],
                         },
                     }
                 ),
