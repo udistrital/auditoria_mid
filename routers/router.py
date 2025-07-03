@@ -5,7 +5,7 @@ from flask_cors import CORS, cross_origin
 from conf.conf import api_cors_config
 from models import model_params
 
-def addRouting(app):
+def add_routing(app):
     app.register_blueprint(healthCheckController)
     app.register_blueprint(auditoriaController, url_prefix='/v1')
 
@@ -15,7 +15,7 @@ CORS(healthCheckController)
 
 @healthCheckController.route('/')
 def _():
-    return healthCheck.healthCheck(documentDoc)
+    return healthCheck.health_check(documentDoc)
 
 auditoriaController = Blueprint('auditoriaController', __name__)
 CORS(auditoriaController)
@@ -26,7 +26,7 @@ documentNamespaceController = documentDoc.namespace("auditoria", description="Co
 auditoria_params=model_params.define_parameters(documentDoc)
 
 @documentNamespaceController.route('/', strict_slashes=False)
-class documentGetAll(Resource):
+class document_get_all(Resource):
     @documentDoc.doc(responses={
         200: 'Success',
         206: 'Partial Content',
@@ -49,7 +49,7 @@ class documentGetAll(Resource):
                 Respuesta con los logs consultados o error.
         """
         params = request.args  
-        return auditoria.getAll(params)
+        return auditoria.get_all(params)
 
 
 @documentNamespaceController.route('/buscarLog', strict_slashes=False)
@@ -75,7 +75,7 @@ class FilterLogs(Resource):
             - horaInicio (str): Hora de inicio en formato hh:mm
             - fechaFin (str): Fecha de fin en formato aaaa-mm-dd
             - horaFin (str): Hora de fin en formato hh:mm
-            - tipoLog (str): Tipo de log (GET, POST, PUT, etc.)
+            - tipo_log (str): Tipo de log (GET, POST, PUT, etc.)
             - codigoResponsable (int): Código del responsable
             - rolResponsable (str): Rol del responsable
 
@@ -85,4 +85,35 @@ class FilterLogs(Resource):
             Respuesta con los logs filtrados en formato JSON.
         """
         params = request.json 
-        return auditoria.postBuscarLog(params)
+        return auditoria.post_buscar_log(params)
+
+@documentNamespaceController.route('/buscarLogsFiltrados', strict_slashes=False)
+class FilterLogsPaginated(Resource):
+    @documentDoc.doc(responses={
+        200: 'Success',
+        400: 'Bad request',
+        404: 'Not found',
+        500: 'Server error'
+    })
+    @documentDoc.param('nombreApi', 'Nombre del API (ej: polux_crud)', required=True)
+    @documentDoc.param('entornoApi', 'Entorno (SANDBOX, PRODUCTION, TEST)', required=True)
+    @documentDoc.param('fechaInicio', 'Fecha de inicio (YYYY-MM-DD)', required=True)
+    @documentDoc.param('horaInicio', 'Hora de inicio (HH:MM)', required=True)
+    @documentDoc.param('fechaFin', 'Fecha de fin (YYYY-MM-DD)', required=True)
+    @documentDoc.param('horaFin', 'Hora de fin (HH:MM)', required=True)
+    @documentDoc.param('page', 'Número de página', default=1)
+    @documentDoc.param('limit', 'Registros por página', default=10)
+    @documentDoc.param('tipo_log', 'Método HTTP (GET, POST, PUT, DELETE)')
+    @documentDoc.param('codigoResponsable', 'Email del usuario responsable')
+    @documentDoc.param('api', 'API específica')
+    @documentDoc.param('endpoint', 'Endpoint específico')
+    @documentDoc.param('ip', 'Dirección IP')
+    @cross_origin(**api_cors_config)
+    def get(self):
+        """
+        Filtra y pagina logs de AWS con base en parámetros en la URL.
+        
+        Permite búsqueda incremental con paginación para mejor performance.
+        """
+        params = request.args
+        return auditoria.get_logs_filtrados(params)

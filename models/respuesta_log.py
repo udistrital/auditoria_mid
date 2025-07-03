@@ -3,27 +3,25 @@ class RespuestaLog:
     Modelo para representar un evento de log en respuesta de la api.
     """
     def __init__(
-            self, tipoLog, fecha, rolResponsable, nombreResponsable, documentoResponsable,
-            direccionAccion, rol, apisConsumen, peticionRealizada, eventoBD, tipoError, mensajeError
+            self, tipo_log, fecha, rol_responsable, nombre_responsable, documento_responsable,
+            direccion_accion, rol, apis_consumen, peticion_realizada, evento_bd, tipo_error, mensaje_error
         ):
-        #self.idLog = idLog  
-        self.tipoLog = tipoLog  
+        self.tipo_log = tipo_log  
         self.fecha = fecha  
-        self.rolResponsable = rolResponsable  
-        self.nombreResponsable = nombreResponsable  
-        self.documentoResponsable = documentoResponsable  
-        self.direccionAccion = direccionAccion  
+        self.rolResponsable = rol_responsable  
+        self.nombreResponsable = nombre_responsable  
+        self.documentoResponsable = documento_responsable  
+        self.direccionAccion = direccion_accion  
         self.rol = rol  
-        self.apisConsumen = apisConsumen  
-        self.peticionRealizada = peticionRealizada  
-        self.eventoBD = eventoBD  
-        self.tipoError = tipoError  
-        self.mensajeError = mensajeError  
+        self.apisConsumen = apis_consumen  
+        self.peticionRealizada = peticion_realizada  
+        self.eventoBD = evento_bd  
+        self.tipoError = tipo_error  
+        self.mensajeError = mensaje_error  
 
     def to_dict(self):
         return {
-            #'idLog': self.idLog,
-            'tipoLog': self.tipoLog,
+            'tipo_log': self.tipo_log,
             'fecha': self.fecha,
             'rolResponsable': self.rolResponsable,
             'nombreResponsable': self.nombreResponsable,
@@ -36,3 +34,8 @@ class RespuestaLog:
             'tipoError': self.tipoError,
             'mensajeError': self.mensajeError
         }
+    def __str__(self):
+        return f"RespuestaLog(attr1={self.tipo_log}, attr2={self.peticionRealizada}, attr2={self.mensajeError}, ...)"
+    
+    def __repr__(self):
+        return self.__str__()
