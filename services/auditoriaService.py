@@ -16,7 +16,7 @@ MIME_TYPE_JSON = "application/json"
 ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
 USUARIO_NO_REGISTRADO = "Usuario no registrado"
 NOMBRE_NO_ENCONTRADO = "Nombre no encontrado"
-LIMIT = 5000
+LIMIT = 10000
 
 # Configurar logger
 logging.basicConfig(level=logging.INFO)
@@ -62,7 +62,7 @@ def get_filtered_logs(params):
 
         # Configurar paginación
         page = max(1, int(params.get("page", params.get("pagina", 1))))
-        limit = min(max(1, int(params.get("limit", params.get("limite", 100)))), 10000)
+        limit = min(max(1, int(params.get("limit", params.get("limite", 100)))), 1000000)
         offset = (page - 1) * limit
 
         # Determinar entorno y grupo de logs
@@ -74,46 +74,28 @@ def get_filtered_logs(params):
             f"{params['fechaInicio']} {params['horaInicio']}",
             f"{params['fechaFin']} {params['horaFin']}",
         )
-
         # 1. Obtener datos paginados
         data_query = construir_data_query(params, offset, limit)
         data_result = ejecutar_query_cloudwatch(
             data_query, log_group, start_time, end_time
         )
-
-        # print("\ndata_result:")
-        # print(data_result)
-        # print(list(data_result.keys()))
-        # print(data_result['status'])
-        # 2. Obtener conteo total para paginación
-        '''count_query = construir_count_query(data_query)
-        count_result = ejecutar_query_cloudwatch(
-            count_query, log_group, start_time, end_time
-        )
-        print(count_result)
-        '''
         # Procesar resultados
         if data_result["status"] == "Complete" and data_result["results"]:
-            eventos = procesar_logs(data_result["results"])
+            '''eventos = procesar_logs(data_result["results"])
             eventos_filtrados = aplicar_filtros_adicionales(eventos, params)
-            total_registros = len(eventos_filtrados)
+            total_registros = len(eventos_filtrados)'''
             # Obtener total de registros
-            '''if count_result["status"] == "Complete" and count_result["results"]:
-                total_registros = int(count_result["results"][0][0]["value"])
-            else:
-                total_registros = len(eventos_filtrados)
-            '''
+            total_registros = len(data_result["results"])
 
             return Response(
                 json.dumps(
                     {
                         "Status": "Successful request",
                         "Code": "200",
-                        "Data": [vars(log) for log in eventos_filtrados],
+                        "Data": [log[1]["value"] for log in data_result["results"]],
                         "Pagination": {
                             "pagina": page,
-                            "limite": limit,
-                            "total": len(eventos_filtrados),
+                            "limite": total_registros if limit < LIMIT else LIMIT,
                             "total registros": total_registros,
                             "paginas": (total_registros + limit - 1) // limit,
                         },
@@ -247,20 +229,32 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
         })
         """
         query_id = response["queryId"]
-        print(f"ID de consulta en AWS: {query_id}")
-        #start_total_time = time.time()  # Tiempo inicial total
-        #query_start_time = time.time()  # Tiempo inicial de cada consulta
+        #print(f"ID de consulta en AWS: {query_id}")
+        start_total_time = time.time()  # Tiempo inicial total
+        query_start_time = time.time()  # Tiempo inicial de cada consulta
+        result =[]
         while True:
-            result = client.get_query_results(queryId=query_id)
-            """
-            query_time = time.time() - query_start_time  # Tiempo de esta consulta específica
-            total_time = time.time() - start_total_time  # Tiempo total acumulado
-            print(f"Última consulta tardó: {query_time:.2f} segundos | Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
-            query_start_time = time.time()
-            """
-            if result["status"] in ["Complete", "Failed", "Cancelled"]:
-                #print(f"Consulta completada. Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
+            # Verificar si ha pasado más de 60 segundos
+            if (time.time() - start_total_time) > 60 or (isinstance(result, dict) and len(result.get('results', [])) >= 10000):
+                print("Timeout de 60 segundos alcanzado. Retornando resultados parciales.")
+                result = client.get_query_results(queryId=query_id)
+                result["status"] = "Complete"  # Marcamos como timeout
                 return result
+
+            # Obtener resultados y medir tiempos
+            result = client.get_query_results(queryId=query_id)
+            query_time = time.time() - query_start_time
+            total_time = time.time() - start_total_time
+            print(f"Última consulta tardó: {query_time:.2f} segundos | Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
+
+            # Verificar si la consulta terminó
+            if result["status"] in ["Complete", "Failed", "Cancelled"]:
+                print(f"Consulta completada. Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
+                return result
+
+            # Esperar antes de volver a consultar (opcional, evita saturar)
+            time.sleep(2)  # Espera 2 segundos entre checks
+            query_start_time = time.time()
     except Exception as e:
         print(f"\nERROR AL EJECUTAR QUERY:\n{query_string}\nERROR: {str(e)}\n")
         raise
@@ -285,6 +279,7 @@ def construir_data_query(params, page, limit):
         query_parts.append(f"| filter @message like /{filtro_palabra_clave}/")
     # Paginación correcta en CloudWatch Insights
     query_parts.extend(["| sort @timestamp desc",f"| limit {LIMIT}",])
+
     query = "\n".join(query_parts)
     return query
 
