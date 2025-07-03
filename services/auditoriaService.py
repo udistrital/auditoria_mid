@@ -16,7 +16,7 @@ MIME_TYPE_JSON = "application/json"
 ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
 USUARIO_NO_REGISTRADO = "Usuario no registrado"
 NOMBRE_NO_ENCONTRADO = "Nombre no encontrado"
-LIMIT = 5000
+LIMIT = 10000
 
 # Configurar logger
 logging.basicConfig(level=logging.INFO)
@@ -62,7 +62,7 @@ def get_filtered_logs(params):
 
         # Configurar paginación
         page = max(1, int(params.get("page", params.get("pagina", 1))))
-        limit = min(max(1, int(params.get("limit", params.get("limite", 100)))), 10000)
+        limit = min(max(1, int(params.get("limit", params.get("limite", 100)))), 1000000)
         offset = (page - 1) * limit
 
         # Determinar entorno y grupo de logs
@@ -95,7 +95,7 @@ def get_filtered_logs(params):
                         "Data": [log[1]["value"] for log in data_result["results"]],
                         "Pagination": {
                             "pagina": page,
-                            "limite": limit,
+                            "limite": total_registros if limit < LIMIT else LIMIT,
                             "total registros": total_registros,
                             "paginas": (total_registros + limit - 1) // limit,
                         },
@@ -229,20 +229,32 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
         })
         """
         query_id = response["queryId"]
-        print(f"ID de consulta en AWS: {query_id}")
-        #start_total_time = time.time()  # Tiempo inicial total
-        #query_start_time = time.time()  # Tiempo inicial de cada consulta
+        #print(f"ID de consulta en AWS: {query_id}")
+        start_total_time = time.time()  # Tiempo inicial total
+        query_start_time = time.time()  # Tiempo inicial de cada consulta
+        result =[]
         while True:
-            result = client.get_query_results(queryId=query_id)
-            """
-            query_time = time.time() - query_start_time  # Tiempo de esta consulta específica
-            total_time = time.time() - start_total_time  # Tiempo total acumulado
-            print(f"Última consulta tardó: {query_time:.2f} segundos | Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
-            query_start_time = time.time()
-            """
-            if result["status"] in ["Complete", "Failed", "Cancelled"]:
-                #print(f"Consulta completada. Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
+            # Verificar si ha pasado más de 60 segundos
+            if (time.time() - start_total_time) > 60 or (isinstance(result, dict) and len(result.get('results', [])) >= 10000):
+                print("Timeout de 60 segundos alcanzado. Retornando resultados parciales.")
+                result = client.get_query_results(queryId=query_id)
+                result["status"] = "Complete"  # Marcamos como timeout
                 return result
+
+            # Obtener resultados y medir tiempos
+            result = client.get_query_results(queryId=query_id)
+            query_time = time.time() - query_start_time
+            total_time = time.time() - start_total_time
+            print(f"Última consulta tardó: {query_time:.2f} segundos | Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
+
+            # Verificar si la consulta terminó
+            if result["status"] in ["Complete", "Failed", "Cancelled"]:
+                print(f"Consulta completada. Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
+                return result
+
+            # Esperar antes de volver a consultar (opcional, evita saturar)
+            time.sleep(2)  # Espera 2 segundos entre checks
+            query_start_time = time.time()
     except Exception as e:
         print(f"\nERROR AL EJECUTAR QUERY:\n{query_string}\nERROR: {str(e)}\n")
         raise
@@ -266,7 +278,8 @@ def construir_data_query(params, page, limit):
     if filtro_palabra_clave:
         query_parts.append(f"| filter @message like /{filtro_palabra_clave}/")
     # Paginación correcta en CloudWatch Insights
-    query_parts.extend(["| sort @timestamp desc",f"| limit 5000",])
+    query_parts.extend(["| sort @timestamp desc",f"| limit {LIMIT}",])
+
     query = "\n".join(query_parts)
     return query
 
