@@ -85,7 +85,7 @@ def get_filtered_logs(params):
             eventos_filtrados = aplicar_filtros_adicionales(eventos, params)
             total_registros = len(eventos_filtrados)'''
             # Obtener total de registros
-
+            total_registros = len(data_result["results"])
             return Response(
                 json.dumps(
                     {
