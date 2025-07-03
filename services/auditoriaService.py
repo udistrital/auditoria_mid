@@ -74,48 +74,28 @@ def get_filtered_logs(params):
             f"{params['fechaInicio']} {params['horaInicio']}",
             f"{params['fechaFin']} {params['horaFin']}",
         )
-
         # 1. Obtener datos paginados
         data_query = construir_data_query(params, offset, limit)
         data_result = ejecutar_query_cloudwatch(
             data_query, log_group, start_time, end_time
         )
-
-        # print("\ndata_result:")
-        # print(data_result)
-        # print(list(data_result.keys()))
-        # print(data_result['status'])
-        # 2. Obtener conteo total para paginación
-        '''count_query = construir_count_query(data_query)
-        count_result = ejecutar_query_cloudwatch(
-            count_query, log_group, start_time, end_time
-        )
-        print(count_result)
-        '''
         # Procesar resultados
         if data_result["status"] == "Complete" and data_result["results"]:
-            eventos = procesar_logs(data_result["results"])
+            '''eventos = procesar_logs(data_result["results"])
             eventos_filtrados = aplicar_filtros_adicionales(eventos, params)
-            total_registros = len(eventos_filtrados)
+            total_registros = len(eventos_filtrados)'''
             # Obtener total de registros
-            '''if count_result["status"] == "Complete" and count_result["results"]:
-                total_registros = int(count_result["results"][0][0]["value"])
-            else:
-                total_registros = len(eventos_filtrados)
-            '''
-            total_registros = len(eventos_filtrados)
+            total_registros = len(data_result["results"])
 
             return Response(
                 json.dumps(
                     {
                         "Status": "Successful request",
                         "Code": "200",
-                        "Data": [],# [vars(log) for log in eventos_filtrados],
-                        "Resultados": [log[1]["value"] for log in data_result["results"]],
+                        "Data": [log[1]["value"] for log in data_result["results"]],
                         "Pagination": {
                             "pagina": page,
                             "limite": limit,
-                            "total": len(eventos_filtrados),
                             "total registros": total_registros,
                             "paginas": (total_registros + limit - 1) // limit,
                         },
@@ -286,7 +266,7 @@ def construir_data_query(params, page, limit):
     if filtro_palabra_clave:
         query_parts.append(f"| filter @message like /{filtro_palabra_clave}/")
     # Paginación correcta en CloudWatch Insights
-    query_parts.extend(["| sort @timestamp desc",f"| limit {LIMIT}",])
+    query_parts.extend(["| sort @timestamp desc",f"| limit 5000",])
     query = "\n".join(query_parts)
     return query
 
