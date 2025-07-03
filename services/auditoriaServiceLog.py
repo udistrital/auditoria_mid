@@ -456,4 +456,5 @@ def reemplazar_valores_log(metodo,log):
         else:
             return "El formato del log DELETE no es válido: " + log
     else:
+
         return log
