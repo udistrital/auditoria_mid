@@ -1,8 +1,6 @@
-import os
 from services import auditoriaService, auditoriaServiceLog
 from flask import json
 from flask import Response
-import boto3, time
 
 def get_all(data):
     """
@@ -40,7 +38,6 @@ def post_buscar_log(data):
 
     try:
         filtros = {
-            # "logGroupName": "/ecs/polux_crud_test",
             "logGroupName": data.get('nombreApi'),
             "environmentApi": data.get('entornoApi'),
             "startTime": f"{data['fechaInicio']} {data['horaInicio']}",

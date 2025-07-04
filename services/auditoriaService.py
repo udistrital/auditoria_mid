@@ -8,19 +8,15 @@ import re
 import requests
 from pytz import timezone, utc
 from datetime import datetime
-import logging
 from botocore.config import Config
 import time
 
 MIME_TYPE_JSON = "application/json"
+PATRON = r"\[(.*?)\] - (.+)"
 ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
 USUARIO_NO_REGISTRADO = "Usuario no registrado"
 NOMBRE_NO_ENCONTRADO = "Nombre no encontrado"
-LIMIT = 5000
-
-# Configurar logger
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+LIMIT = 10000
 
 client = boto3.client(
     "logs",
@@ -62,7 +58,7 @@ def get_filtered_logs(params):
 
         # Configurar paginación
         page = max(1, int(params.get("page", params.get("pagina", 1))))
-        limit = min(max(1, int(params.get("limit", params.get("limite", 100)))), 10000)
+        limit = min(max(1, int(params.get("limit", params.get("limite", 100)))), 1000000)
         offset = (page - 1) * limit
 
         # Determinar entorno y grupo de logs
@@ -74,46 +70,24 @@ def get_filtered_logs(params):
             f"{params['fechaInicio']} {params['horaInicio']}",
             f"{params['fechaFin']} {params['horaFin']}",
         )
-
         # 1. Obtener datos paginados
         data_query = construir_data_query(params, offset, limit)
         data_result = ejecutar_query_cloudwatch(
             data_query, log_group, start_time, end_time
         )
-
-        # print("\ndata_result:")
-        # print(data_result)
-        # print(list(data_result.keys()))
-        # print(data_result['status'])
-        # 2. Obtener conteo total para paginación
-        '''count_query = construir_count_query(data_query)
-        count_result = ejecutar_query_cloudwatch(
-            count_query, log_group, start_time, end_time
-        )
-        print(count_result)
-        '''
         # Procesar resultados
         if data_result["status"] == "Complete" and data_result["results"]:
-            eventos = procesar_logs(data_result["results"])
-            eventos_filtrados = aplicar_filtros_adicionales(eventos, params)
-            total_registros = len(eventos_filtrados)
             # Obtener total de registros
-            '''if count_result["status"] == "Complete" and count_result["results"]:
-                total_registros = int(count_result["results"][0][0]["value"])
-            else:
-                total_registros = len(eventos_filtrados)
-            '''
-
+            total_registros = len(data_result["results"])
             return Response(
                 json.dumps(
                     {
                         "Status": "Successful request",
                         "Code": "200",
-                        "Data": [vars(log) for log in eventos_filtrados],
+                        "Data": [log[1]["value"] for log in data_result["results"]],
                         "Pagination": {
                             "pagina": page,
-                            "limite": limit,
-                            "total": len(eventos_filtrados),
+                            "limite": total_registros if limit < LIMIT else LIMIT,
                             "total registros": total_registros,
                             "paginas": (total_registros + limit - 1) // limit,
                         },
@@ -155,9 +129,6 @@ def get_filtered_logs(params):
         )
     except Exception as e:
         import traceback
-
-        print(f"Error en get_filtered_logs: {str(e)}")
-        print(traceback.format_exc())
 
         return Response(
             json.dumps(
@@ -221,48 +192,41 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
         Diccionario con los resultados de la query (status, results, etc.).
     """
     try:
-        # 1. Imprimir la query completa para depuración
-        """
-        logger.info("\n" + "="*50)
-        logger.info("QUERY QUE SE ENVÍA A AWS CLOUDWATCH:")
-        logger.info(query_string)
-        logger.info("="*50 + "\n")
-
-        # 2. Imprimir metadatos de la consulta
-        logger.info(f"Grupo de logs: {log_group}")
-        logger.info(f"Rango de tiempo: {start_time} a {end_time}")
-
-        """
-        # 3. Ejecutar la consulta normalmente
         response = client.start_query(
             logGroupName=log_group,
             startTime=start_time,
             endTime=end_time,
             queryString=query_string,
         )
-        """
-        logger.info("Query iniciada en CloudWatch", extra={
-            'query_id': response['queryId'],
-            'status': 'started'
-        })
-        """
         query_id = response["queryId"]
-        print(f"ID de consulta en AWS: {query_id}")
-        #start_total_time = time.time()  # Tiempo inicial total
-        #query_start_time = time.time()  # Tiempo inicial de cada consulta
+        #print(f"ID de consulta en AWS: {query_id}")
+        start_total_time = time.time()  # Tiempo inicial total
+        query_start_time = time.time()  # Tiempo inicial de cada consulta
+        result =[]
         while True:
+            # Verificar si ha pasado más de 60 segundos
+            if (time.time() - start_total_time) > 60 or (isinstance(result, dict) and len(result.get('results', [])) >= 10000):
+                #print("Timeout de 60 segundos alcanzado. Retornando resultados parciales.")
+                result = client.get_query_results(queryId=query_id)
+                result["status"] = "Complete"  # Marcamos como timeout
+                return result
+
+            # Obtener resultados y medir tiempos
             result = client.get_query_results(queryId=query_id)
-            """
-            query_time = time.time() - query_start_time  # Tiempo de esta consulta específica
-            total_time = time.time() - start_total_time  # Tiempo total acumulado
-            print(f"Última consulta tardó: {query_time:.2f} segundos | Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
-            query_start_time = time.time()
-            """
+            query_time = time.time() - query_start_time
+            total_time = time.time() - start_total_time
+            #print(f"Última consulta tardó: {query_time:.2f} segundos | Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
+
+            # Verificar si la consulta terminó
             if result["status"] in ["Complete", "Failed", "Cancelled"]:
                 #print(f"Consulta completada. Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
                 return result
+
+            # Esperar antes de volver a consultar (opcional, evita saturar)
+            time.sleep(2)  # Espera 2 segundos entre checks
+            query_start_time = time.time()
     except Exception as e:
-        print(f"\nERROR AL EJECUTAR QUERY:\n{query_string}\nERROR: {str(e)}\n")
+        #print(f"\nERROR AL EJECUTAR QUERY:\n{query_string}\nERROR: {str(e)}\n")
         raise
 
 def construir_data_query(params, page, limit):
@@ -285,16 +249,8 @@ def construir_data_query(params, page, limit):
         query_parts.append(f"| filter @message like /{filtro_palabra_clave}/")
     # Paginación correcta en CloudWatch Insights
     query_parts.extend(["| sort @timestamp desc",f"| limit {LIMIT}",])
-    query = "\n".join(query_parts)
-    return query
 
-def construir_count_query(data_query):
-    """Construye y loguea la query de conteo"""
-    data_query = data_query.split("\n")
-    data_query.append("| stats count() as total")
-    query = "\n".join(data_query)
-    print("\nQUERY DE CONTEO CONSTRUIDA:")
-    print(query)
+    query = "\n".join(query_parts)
     return query
 
 def procesar_logs(results):
@@ -355,7 +311,7 @@ def procesar_logs(results):
                 rol = "Rol no encontrado"
                 doc = "Documento no encontrado"
                 nombre = NOMBRE_NO_ENCONTRADO
-
+            tipo_error, mensaje_error = extraer_error(message)
             log_obj = respuesta_log.RespuestaLog(
                 tipo_log=extracted_data.get("tipo_log"),
                 fecha=fecha_convertida,
@@ -375,8 +331,8 @@ def procesar_logs(results):
                 evento_bd=reemplazar_valores_log(
                     extracted_data.get("metodo"), extracted_data.get("sql_orm")
                 ),
-                tipo_error="N/A",
-                mensaje_error=message,
+                tipoError=tipo_error,
+                mensajeError=mensaje_error
             )
             eventos.append(log_obj)
         except Exception as e:
@@ -499,43 +455,28 @@ def extract_log_json(endpoint, api, metodo, usuario, data_json):
 def aplicar_filtros_adicionales(eventos, params):
     """Versión modificada para diagnóstico"""
     if not eventos:
-        print("\n=== ADVERTENCIA: eventos vacíos antes de filtrar ===")
         return []
 
     filtered = eventos
 
-    print("\n=== PARÁMETROS DE FILTRADO ===")
-    print(f"Params recibidos: {filtered}")
-    print(f"Params recibidos: {params}")
-
     # Filtrar por método si está especificado
     if params.get("tipo_log"):
-        print(f"\nFiltrando por tipo_log: {params['tipo_log']}")
         filtered = [ log for log in filtered if params["tipo_log"].lower() in log.tipo_log.lower() ]
-        print(f"Registros después de filtrar por tipo_log: {len(filtered)}")
 
     # Filtrar por API si está especificado
     if params.get("api"):
-        print(f"\nFiltrando por api: {params['api']}")
         filtered = [ log for log in filtered if params["api"].lower() in log.peticion_realizada.lower() ]
-        print(f"Registros después de filtrar por api: {len(filtered)}")
 
     # Filtrar por endpoint si está especificado
     if params.get("endpoint"):
-        print(f"\nFiltrando por endpoint: {params['endpoint']}")
         filtered = [ log for log in filtered if params["endpoint"].lower() in log.peticion_realizada.lower() ]
-        print(f"Registros después de filtrar por endpoint: {len(filtered)}")
 
     # Filtrar por IP si está especificado
     if params.get("ip"):
-        print(f"\nFiltrando por ip: {params['ip']}")
         filtered = [log for log in filtered if params["ip"] == log.direccion_accion]
-        print(f"Registros después de filtrar por ip: {len(filtered)}")
     # Filtrar por IP si está especificado
     if params.get("ip"):
-        print(f"\nFiltrando por palabra clave: {params['palabraClave']}")
         filtered = [log for log in filtered if params["palabraClave"] in log.data_error]
-        print(f"Registros después de filtrar por palabra clave: {len(filtered)}")
 
     return filtered
 
@@ -550,10 +491,7 @@ def reemplazar_valores_log(metodo, log):
         str: Consulta SQL con los valores reemplazados.
     """
     if metodo.upper() == "POST":
-        patron = r"\[(.*?)\] - (.+)"
-        match = re.search(patron, log)
-        print("POST")
-        print(match)
+        match = re.search(PATRON, log)
         if match:
             consulta = match.group(1)
             valores = match.group(2).split(", ")
@@ -565,11 +503,8 @@ def reemplazar_valores_log(metodo, log):
         else:
             return "El formato del log POST no es válido: " + log
 
-    elif metodo.upper() == "PUT":
-        patron = r"\[(.*?)\] - (.+)"
-        match = re.search(patron, log)
-        print("PUT")
-        print(match)
+    elif metodo.upper() in ["PUT", "GET", "DELETE"]:
+        match = re.search(PATRON, log)
         if match:
             consulta = match.group(1)
             valores = re.findall(r"`([^`]*)`", match.group(2))
@@ -578,33 +513,7 @@ def reemplazar_valores_log(metodo, log):
                 consulta = consulta.replace(f"${i}", valor.strip())
             return consulta
         else:
-            return "El formato del log PUT no es válido: " + log
-
-    elif metodo.upper() == "GET":
-        patron = r"\[(.*?)\] - (.+)"
-        match = re.search(patron, log)
-        if match:
-            consulta = match.group(1)
-            valores = re.findall(r"`([^`]*)`", match.group(2))
-
-            for i, valor in enumerate(valores, start=1):
-                consulta = consulta.replace(f"${i}", valor.strip())
-            return consulta
-        else:
-            return "El formato del log GET no es válido: " + log
-
-    elif metodo.upper() == "DELETE":
-        patron = r"\[(.*?)\] - (.+)"
-        match = re.search(patron, log)
-        if match:
-            consulta = match.group(1)
-            valores = re.findall(r"`([^`]*)`", match.group(2))
-
-            for i, valor in enumerate(valores, start=1):
-                consulta = consulta.replace(f"${i}", valor.strip())
-            return consulta
-        else:
-            return "El formato del log DELETE no es válido: " + log
+            return f"El formato del log {metodo.upper()} no es válido: {log}"
     else:
         return
 
