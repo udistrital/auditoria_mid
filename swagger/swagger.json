@@ -49,7 +49,7 @@
                     }
                 },
                 "summary": "Filtra los logs de AWS con base en par\u00e1metros espec\u00edficos",
-                "description": "Parameters\n----------\nrequest : json\n    Un JSON que contiene:\n    - fechaInicio (str): Fecha de inicio en formato aaaa-mm-dd\n    - horaInicio (str): Hora de inicio en formato hh:mm\n    - fechaFin (str): Fecha de fin en formato aaaa-mm-dd\n    - horaFin (str): Hora de fin en formato hh:mm\n    - tipoLog (str): Tipo de log (GET, POST, PUT, etc.)\n    - codigoResponsable (int): C\u00f3digo del responsable\n    - rolResponsable (str): Rol del responsable\n\nReturns\n-------\nResponse\n    Respuesta con los logs filtrados en formato JSON.",
+                "description": "Parameters\n----------\nrequest : json\n    Un JSON que contiene:\n    - fechaInicio (str): Fecha de inicio en formato aaaa-mm-dd\n    - horaInicio (str): Hora de inicio en formato hh:mm\n    - fechaFin (str): Fecha de fin en formato aaaa-mm-dd\n    - horaFin (str): Hora de fin en formato hh:mm\n    - tipo_log (str): Tipo de log (GET, POST, PUT, etc.)\n    - codigoResponsable (int): C\u00f3digo del responsable\n    - rolResponsable (str): Rol del responsable\n\nReturns\n-------\nResponse\n    Respuesta con los logs filtrados en formato JSON.",
                 "operationId": "post_filter_logs",
                 "parameters": [
                     {
@@ -59,6 +59,118 @@
                         "schema": {
                             "$ref": "#/definitions/filtro_log_request"
                         }
+                    }
+                ],
+                "tags": [
+                    "auditoria"
+                ]
+            }
+        },
+        "/auditoria/buscarLogsFiltrados": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "Success"
+                    },
+                    "400": {
+                        "description": "Bad request"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    },
+                    "500": {
+                        "description": "Server error"
+                    }
+                },
+                "summary": "Filtra y pagina logs de AWS con base en par\u00e1metros en la URL",
+                "description": "Permite b\u00fasqueda incremental con paginaci\u00f3n para mejor performance.",
+                "operationId": "get_filter_logs_paginated",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "description": "Direcci\u00f3n IP",
+                        "name": "ip",
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "description": "Endpoint espec\u00edfico",
+                        "name": "endpoint",
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "description": "API espec\u00edfica",
+                        "name": "api",
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "description": "Email del usuario responsable",
+                        "name": "codigoResponsable",
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "description": "M\u00e9todo HTTP (GET, POST, PUT, DELETE)",
+                        "name": "tipo_log",
+                        "type": "string"
+                    },
+                    {
+                        "default": 10,
+                        "in": "query",
+                        "description": "Registros por p\u00e1gina",
+                        "name": "limit",
+                        "type": "string"
+                    },
+                    {
+                        "default": 1,
+                        "in": "query",
+                        "description": "N\u00famero de p\u00e1gina",
+                        "name": "page",
+                        "type": "string"
+                    },
+                    {
+                        "required": true,
+                        "in": "query",
+                        "description": "Hora de fin (HH:MM)",
+                        "name": "horaFin",
+                        "type": "string"
+                    },
+                    {
+                        "required": true,
+                        "in": "query",
+                        "description": "Fecha de fin (YYYY-MM-DD)",
+                        "name": "fechaFin",
+                        "type": "string"
+                    },
+                    {
+                        "required": true,
+                        "in": "query",
+                        "description": "Hora de inicio (HH:MM)",
+                        "name": "horaInicio",
+                        "type": "string"
+                    },
+                    {
+                        "required": true,
+                        "in": "query",
+                        "description": "Fecha de inicio (YYYY-MM-DD)",
+                        "name": "fechaInicio",
+                        "type": "string"
+                    },
+                    {
+                        "required": true,
+                        "in": "query",
+                        "description": "Entorno (SANDBOX, PRODUCTION, TEST)",
+                        "name": "entornoApi",
+                        "type": "string"
+                    },
+                    {
+                        "required": true,
+                        "in": "query",
+                        "description": "Nombre del API (ej: polux_crud)",
+                        "name": "nombreApi",
+                        "type": "string"
                     }
                 ],
                 "tags": [
@@ -94,7 +206,7 @@
                 "horaFin",
                 "horaInicio",
                 "nombreApi",
-                "tipoLog"
+                "tipo_log"
             ],
             "properties": {
                 "fechaInicio": {
@@ -109,7 +221,7 @@
                 "horaFin": {
                     "type": "string"
                 },
-                "tipoLog": {
+                "tipo_log": {
                     "type": "string"
                 },
                 "codigoResponsable": {
