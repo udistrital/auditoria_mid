@@ -30,7 +30,7 @@ client = boto3.client(
     aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
 )
 
-def get_filtered_logs(params):
+def get_processed_filtered_logs(params):
     """Obtiene logs filtrados con paginación real desde CloudWatch
 
     Args:
@@ -129,6 +129,131 @@ def get_filtered_logs(params):
         )
     except Exception as e:
         import traceback
+
+        return Response(
+            json.dumps(
+                {
+                    "Status": "Internal Error",
+                    "Code": "500",
+                    "Error": str(e),
+                    "Details": (
+                        traceback.format_exc()
+                        if os.environ.get("FLASK_ENV") == "development"
+                        else None
+                    ),
+                }
+            ),
+            status=500,
+            mimetype=MIME_TYPE_JSON,
+        )
+
+def get_filtered_logs(params):
+    """Obtiene logs filtrados con paginación real desde CloudWatch
+
+    Args:
+        params (dict): Parámetros de filtrado y paginación
+
+    Returns:
+        Response: Respuesta Flask con los logs y metadatos de paginación
+    """
+    try:
+        # Validar parámetros requeridos
+        required_params = ["nombreApi","entornoApi","fechaInicio","horaInicio","fechaFin","horaFin",]
+        for param in required_params:
+            if param not in params:
+                return Response(
+                    json.dumps(
+                        {
+                            "Status": "Bad Request",
+                            "Code": "400",
+                            "Error": f"Falta el parámetro requerido: {param}",
+                        }
+                    ),
+                    status=400,
+                    mimetype=MIME_TYPE_JSON,
+                )
+
+        # Configurar paginación
+        page = max(1, int(params.get("page", params.get("pagina", 1))))
+        limit = min(max(1, int(params.get("limit", params.get("limite", 100)))), 10000)
+        offset = (page - 1) * limit
+
+        # Determinar entorno y grupo de logs
+        entorno_api = "prod" if params["entornoApi"].upper() == "PRODUCTION" else "test"
+        log_group = f"/ecs/{params['nombreApi']}_{entorno_api}"
+
+        # Convertir tiempos a UTC
+        start_time, end_time = convertir_tiempo_a_utc(
+            f"{params['fechaInicio']} {params['horaInicio']}",
+            f"{params['fechaFin']} {params['horaFin']}",
+        )
+
+        # 1. Obtener datos paginados
+        data_query = construir_data_query(params, offset, limit)
+        data_result = ejecutar_query_cloudwatch(
+            data_query, log_group, start_time, end_time
+        )
+        # Procesar resultados
+        if data_result["status"] == "Complete" and data_result["results"]:
+            eventos = procesar_logs(data_result["results"])
+            eventos_filtrados = aplicar_filtros_adicionales(eventos, params)
+            total_registros = len(eventos_filtrados)
+            # Obtener total de registros
+
+            return Response(
+                json.dumps(
+                    {
+                        "Status": "Successful request",
+                        "Code": "200",
+                        "Data": [vars(log) for log in eventos_filtrados],
+                        "Pagination": {
+                            "pagina": page,
+                            "limite": limit,
+                            "total": len(eventos_filtrados),
+                            "total registros": total_registros,
+                            "paginas": (total_registros + limit - 1) // limit,
+                        },
+                    }
+                ),
+                status=200,
+                mimetype=MIME_TYPE_JSON,
+            )
+        else:
+            return Response(
+                json.dumps(
+                    {
+                        "Status": "No logs found",
+                        "Code": "404",
+                        "Data": [],
+                        "Pagination": {
+                            "pagina": page,
+                            "limite": limit,
+                            "total": 0,
+                            "paginas": 0,
+                        },
+                    }
+                ),
+                status=404,
+                mimetype=MIME_TYPE_JSON,
+            )
+
+    except ValueError as e:
+        return Response(
+            json.dumps(
+                {
+                    "Status": "Bad Request",
+                    "Code": "400",
+                    "Error": f"Parámetros inválidos: {str(e)}",
+                }
+            ),
+            status=400,
+            mimetype=MIME_TYPE_JSON,
+        )
+    except Exception as e:
+        import traceback
+
+        print(f"Error en get_filtered_logs: {str(e)}")
+        print(traceback.format_exc())
 
         return Response(
             json.dumps(
@@ -311,7 +436,7 @@ def procesar_logs(results):
                 rol = "Rol no encontrado"
                 doc = "Documento no encontrado"
                 nombre = NOMBRE_NO_ENCONTRADO
-            tipo_error, mensaje_error = extraer_error(message)
+
             log_obj = respuesta_log.RespuestaLog(
                 tipo_log=extracted_data.get("tipo_log"),
                 fecha=fecha_convertida,
@@ -331,8 +456,8 @@ def procesar_logs(results):
                 evento_bd=reemplazar_valores_log(
                     extracted_data.get("metodo"), extracted_data.get("sql_orm")
                 ),
-                tipoError=tipo_error,
-                mensajeError=mensaje_error
+                tipo_error="N/A",
+                mensaje_error=message,
             )
             eventos.append(log_obj)
         except Exception as e:
@@ -456,7 +581,6 @@ def aplicar_filtros_adicionales(eventos, params):
     """Versión modificada para diagnóstico"""
     if not eventos:
         return []
-
     filtered = eventos
 
     # Filtrar por método si está especificado
