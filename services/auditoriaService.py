@@ -278,7 +278,7 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
         while True:
             # Verificar si ha pasado más de 60 segundos
             if (time.time() - start_total_time) > 60 or (isinstance(result, dict) and len(result.get('results', [])) >= 10000):
-                print("Timeout de 60 segundos alcanzado. Retornando resultados parciales.")
+                #print("Timeout de 60 segundos alcanzado. Retornando resultados parciales.")
                 result = client.get_query_results(queryId=query_id)
                 result["status"] = "Complete"  # Marcamos como timeout
                 return result
@@ -287,11 +287,11 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
             result = client.get_query_results(queryId=query_id)
             query_time = time.time() - query_start_time
             total_time = time.time() - start_total_time
-            print(f"Última consulta tardó: {query_time:.2f} segundos | Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
+            #print(f"Última consulta tardó: {query_time:.2f} segundos | Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
 
             # Verificar si la consulta terminó
             if result["status"] in ["Complete", "Failed", "Cancelled"]:
-                print(f"Consulta completada. Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
+                #print(f"Consulta completada. Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
                 return result
 
             # Esperar antes de volver a consultar (opcional, evita saturar)
