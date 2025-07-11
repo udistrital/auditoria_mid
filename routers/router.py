@@ -107,6 +107,7 @@ class FilterLogsPaginated(Resource):
     @documentDoc.param('api', 'API específica')
     @documentDoc.param('endpoint', 'Endpoint específico')
     @documentDoc.param('ip', 'Dirección IP')
+    @documentDoc.param('typeSeach', 'Tipo de búsqueda')
     @cross_origin(**api_cors_config)
     def get(self):
         """

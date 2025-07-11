@@ -127,9 +127,11 @@ def get_logs_filtrados(data):
             "page": pagina,
             "limit": limite
         }
-        
-        return auditoriaService.get_filtered_logs(filtros)
-        
+        type_search = data.get('typeSearch')
+        if (type_search== 'flexible'):
+            return auditoriaService.get_processed_filtered_logs(filtros)
+        else:
+            return auditoriaService.get_filtered_logs(filtros)
     except ValueError as e:
         return Response(
             json.dumps({'Status': 'Bad Request', 'Code': '400', 'Error': str(e)}),
