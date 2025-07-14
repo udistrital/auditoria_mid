@@ -196,7 +196,10 @@ def get_filtered_logs(params):
         log_group = determiar_entorno(params)
 
         # Convertir tiempos a UTC
-        start_time, end_time = formato_rango_fecha(params)
+        start_time, end_time = convertir_tiempo_a_utc(
+            f"{params['fechaInicio']} {params['horaInicio']}",
+            f"{params['fechaFin']} {params['horaFin']}"
+        )#formato_rango_fecha(params)
 
         # 1. Obtener datos paginados
         data_query = construir_data_query(params, offset, limit)

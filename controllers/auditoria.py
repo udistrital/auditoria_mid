@@ -1,6 +1,7 @@
 from services import auditoriaService, auditoriaServiceLog
 from flask import json
 from flask import Response
+from datetime import datetime
 
 def get_all(data):
     """
@@ -93,6 +94,10 @@ def get_logs_filtrados(data):
     try:
         # Validar parámetros requeridos
         required_params = ['nombreApi', 'entornoApi', 'fechaInicio', 'horaInicio', 'fechaFin', 'horaFin']
+        fecha_inicio = datetime.fromtimestamp(int(data['fechaInicio'])).strftime('%Y-%m-%d')
+        hora_inicio = datetime.fromtimestamp(int(data['fechaInicio'])).strftime('%H:%M')
+        fecha_fin = datetime.fromtimestamp(int(data['fechaFin'])).strftime('%Y-%m-%d')
+        hora_fin = datetime.fromtimestamp(int(data['fechaFin'])).strftime('%H:%M')
         for param in required_params:
             if param not in data:
                 return Response(
@@ -110,10 +115,10 @@ def get_logs_filtrados(data):
         filtros = {
             "logGroupName": data['nombreApi'],
             "nombreApi": data['nombreApi'],
-            'fechaInicio': data['fechaInicio'],
-            'horaInicio': data['horaInicio'],
-            'fechaFin': data['fechaFin'],
-            'horaFin': data['horaFin'],
+            "fechaInicio": fecha_inicio,
+            "horaInicio": hora_inicio,
+            "fechaFin": fecha_fin,
+            "horaFin": hora_fin,
             "environmentApi": data['entornoApi'],
             "entornoApi": data['entornoApi'],
             "startTime": f"{data['fechaInicio']} {data['horaInicio']}",
