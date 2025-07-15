@@ -8,19 +8,16 @@ import re
 import requests
 from pytz import timezone, utc
 from datetime import datetime
-import logging
 from botocore.config import Config
 import time
 
 MIME_TYPE_JSON = "application/json"
+PATRON = r"\[(.*?)\] - (.+)"
 ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
 USUARIO_NO_REGISTRADO = "Usuario no registrado"
 NOMBRE_NO_ENCONTRADO = "Nombre no encontrado"
 LIMIT = 10000
-
-# Configurar logger
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+REQUIRE_PARAMS = ["nombreApi","entornoApi","fechaInicio","horaInicio","fechaFin","horaFin",]
 
 client = boto3.client(
     "logs",
@@ -34,78 +31,64 @@ client = boto3.client(
     aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
 )
 
-def get_filtered_logs(params):
-    """Obtiene logs filtrados con paginación real desde CloudWatch
-
-    Args:
-        params (dict): Parámetros de filtrado y paginación
-
-    Returns:
-        Response: Respuesta Flask con los logs y metadatos de paginación
-    """
-    try:
-        # Validar parámetros requeridos
-        required_params = ["nombreApi","entornoApi","fechaInicio","horaInicio","fechaFin","horaFin",]
-        for param in required_params:
-            if param not in params:
-                return Response(
-                    json.dumps(
-                        {
-                            "Status": "Bad Request",
-                            "Code": "400",
-                            "Error": f"Falta el parámetro requerido: {param}",
-                        }
-                    ),
-                    status=400,
-                    mimetype=MIME_TYPE_JSON,
-                )
-
-        # Configurar paginación
-        page = max(1, int(params.get("page", params.get("pagina", 1))))
-        limit = min(max(1, int(params.get("limit", params.get("limite", 100)))), 1000000)
-        offset = (page - 1) * limit
-
-        # Determinar entorno y grupo de logs
-        entorno_api = "prod" if params["entornoApi"].upper() == "PRODUCTION" else "test"
-        log_group = f"/ecs/{params['nombreApi']}_{entorno_api}"
-
-        # Convertir tiempos a UTC
-        start_time, end_time = convertir_tiempo_a_utc(
-            f"{params['fechaInicio']} {params['horaInicio']}",
-            f"{params['fechaFin']} {params['horaFin']}",
-        )
-        # 1. Obtener datos paginados
-        data_query = construir_data_query(params, offset, limit)
-        data_result = ejecutar_query_cloudwatch(
-            data_query, log_group, start_time, end_time
-        )
-        # Procesar resultados
-        if data_result["status"] == "Complete" and data_result["results"]:
-            '''eventos = procesar_logs(data_result["results"])
-            eventos_filtrados = aplicar_filtros_adicionales(eventos, params)
-            total_registros = len(eventos_filtrados)'''
-            # Obtener total de registros
-            total_registros = len(data_result["results"])
-
+def validate_params(params):
+    for param in REQUIRE_PARAMS:
+        if param not in params:
             return Response(
                 json.dumps(
                     {
-                        "Status": "Successful request",
-                        "Code": "200",
-                        "Data": [log[1]["value"] for log in data_result["results"]],
-                        "Pagination": {
-                            "pagina": page,
-                            "limite": total_registros if limit < LIMIT else LIMIT,
-                            "total registros": total_registros,
-                            "paginas": (total_registros + limit - 1) // limit,
-                        },
+                        "Status": "Bad Request",
+                        "Code": "400",
+                        "Error": f"Falta el parámetro requerido: {param}",
                     }
                 ),
-                status=200,
+                status=400,
                 mimetype=MIME_TYPE_JSON,
             )
-        else:
-            return Response(
+
+def calcular_paginacion(params):
+    # Obtener página con valor por defecto 1 y asegurar que sea mínimo 1
+    page = max(1, int(params.get("page", params.get("pagina", 1))))
+    # Obtener límite con valor por defecto 100, asegurar que esté entre 1 y 10000
+    limit = min(max(1, int(params.get("limit", params.get("limite", 100)))), 10000)
+    # Calcular offset
+    offset = (page - 1) * limit
+    # Retornar los tres valores
+    return page, limit, offset
+
+def determiar_entorno(params):
+    entorno_api = "prod" if params["entornoApi"].upper() == "PRODUCTION" else "test"
+    log_group = f"/ecs/{params['nombreApi']}_{entorno_api}"
+    return log_group
+
+def formato_rango_fecha(params):
+    start_time, end_time = convertir_tiempo_a_utc(
+        f"{params['fechaInicio']} {params['horaInicio']}",
+        f"{params['fechaFin']} {params['horaFin']}",
+    )
+    return start_time, end_time
+
+def procesamiento_respuesta(data,total_registros,page,limit):
+    return Response(
+            json.dumps(
+                {
+                    "Status": "Successful request",
+                    "Code": "200",
+                    "Data": data,
+                    "Pagination": {
+                        "pagina": page,
+                        "limite": total_registros if limit < LIMIT else LIMIT,
+                        "total registros": total_registros,
+                        "paginas": (total_registros + limit - 1) // limit,
+                    },
+                }
+            ),
+            status=200,
+            mimetype=MIME_TYPE_JSON,
+        )
+
+def no_logs_found(page,limit):
+    return Response(
                 json.dumps(
                     {
                         "Status": "No logs found",
@@ -122,41 +105,122 @@ def get_filtered_logs(params):
                 status=404,
                 mimetype=MIME_TYPE_JSON,
             )
+def bad_request(e):
+    return Response(
+        json.dumps(
+            {
+                "Status": "Bad Request",
+                "Code": "400",
+                "Error": f"Parámetros inválidos: {str(e)}",
+            }
+        ),
+        status=400,
+        mimetype=MIME_TYPE_JSON,
+    )
+def internal_error(e):
+    import traceback
+    print(f"Error en get_filtered_logs: {str(e)}")
+    print(traceback.format_exc())
+
+    return Response(
+        json.dumps(
+            {
+                "Status": "Internal Error",
+                "Code": "500",
+                "Error": str(e),
+                "Details": (
+                    traceback.format_exc()
+                    if os.environ.get("FLASK_ENV") == "development"
+                    else None
+                ),
+            }
+        ),
+        status=500,
+        mimetype=MIME_TYPE_JSON,
+    )
+
+def get_processed_filtered_logs(params):
+    """Obtiene logs filtrados con paginación real desde CloudWatch
+
+    Args:
+        params (dict): Parámetros de filtrado y paginación
+
+    Returns:
+        Response: Respuesta Flask con los logs y metadatos de paginación
+    """
+    try:
+        # Validar parámetros requeridos
+        validate_params(params)
+        # Configurar paginación
+        page, limit, offset = calcular_paginacion(params)
+
+        # Determinar entorno y grupo de logs
+        log_group = determiar_entorno(params)
+
+        # Convertir tiempos a UTC
+        start_time, end_time = formato_rango_fecha(params)
+        # 1. Obtener datos paginados
+        data_query = construir_data_query(params, offset, limit)
+        data_result = ejecutar_query_cloudwatch(
+            data_query, log_group, start_time, end_time
+        )
+        # Procesar resultados
+        if data_result["status"] == "Complete" and data_result["results"]:
+            # Obtener total de registros
+            total_registros = len(data_result["results"])
+            data = [log[1]["value"] for log in data_result["results"]]
+            return procesamiento_respuesta(data,total_registros,page,limit)
+        else:
+            return no_logs_found(page,limit)
+    except ValueError as e:
+        return bad_request(e)
+    except Exception as e:
+        return internal_error(e)
+
+def get_filtered_logs(params):
+    """Obtiene logs filtrados con paginación real desde CloudWatch
+
+    Args:
+        params (dict): Parámetros de filtrado y paginación
+
+    Returns:
+        Response: Respuesta Flask con los logs y metadatos de paginación
+    """
+    try:
+        # Validar parámetros requeridos
+        validate_params(params)
+        # Configurar paginación
+        page, limit, offset = calcular_paginacion(params)
+
+        # Determinar entorno y grupo de logs
+        log_group = determiar_entorno(params)
+
+        # Convertir tiempos a UTC
+        start_time, end_time = convertir_tiempo_a_utc(
+            f"{params['fechaInicio']} {params['horaInicio']}",
+            f"{params['fechaFin']} {params['horaFin']}"
+        )#formato_rango_fecha(params)
+
+        # 1. Obtener datos paginados
+        data_query = construir_data_query(params, offset, limit)
+        data_result = ejecutar_query_cloudwatch(
+            data_query, log_group, start_time, end_time
+        )
+        # Procesar resultados
+        if data_result["status"] == "Complete" and data_result["results"]:
+            eventos = procesar_logs(data_result["results"])
+            eventos_filtrados = aplicar_filtros_adicionales(eventos, params)
+            total_registros = len(eventos_filtrados)
+            # Obtener total de registros
+            data = [vars(log) for log in eventos_filtrados]
+            return procesamiento_respuesta(data,total_registros,page,limit)
+        else:
+            return no_logs_found(page,limit)
 
     except ValueError as e:
-        return Response(
-            json.dumps(
-                {
-                    "Status": "Bad Request",
-                    "Code": "400",
-                    "Error": f"Parámetros inválidos: {str(e)}",
-                }
-            ),
-            status=400,
-            mimetype=MIME_TYPE_JSON,
-        )
+        return bad_request(e)
     except Exception as e:
-        import traceback
-
-        print(f"Error en get_filtered_logs: {str(e)}")
-        print(traceback.format_exc())
-
-        return Response(
-            json.dumps(
-                {
-                    "Status": "Internal Error",
-                    "Code": "500",
-                    "Error": str(e),
-                    "Details": (
-                        traceback.format_exc()
-                        if os.environ.get("FLASK_ENV") == "development"
-                        else None
-                    ),
-                }
-            ),
-            status=500,
-            mimetype=MIME_TYPE_JSON,
-        )
+        return internal_error(e)
 
 def convertir_tiempo_a_utc(start_str, end_str, timezone_str="America/Bogota"):
     """
@@ -203,31 +267,12 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
         Diccionario con los resultados de la query (status, results, etc.).
     """
     try:
-        # 1. Imprimir la query completa para depuración
-        """
-        logger.info("\n" + "="*50)
-        logger.info("QUERY QUE SE ENVÍA A AWS CLOUDWATCH:")
-        logger.info(query_string)
-        logger.info("="*50 + "\n")
-
-        # 2. Imprimir metadatos de la consulta
-        logger.info(f"Grupo de logs: {log_group}")
-        logger.info(f"Rango de tiempo: {start_time} a {end_time}")
-
-        """
-        # 3. Ejecutar la consulta normalmente
         response = client.start_query(
             logGroupName=log_group,
             startTime=start_time,
             endTime=end_time,
             queryString=query_string,
         )
-        """
-        logger.info("Query iniciada en CloudWatch", extra={
-            'query_id': response['queryId'],
-            'status': 'started'
-        })
-        """
         query_id = response["queryId"]
         #print(f"ID de consulta en AWS: {query_id}")
         start_total_time = time.time()  # Tiempo inicial total
@@ -236,7 +281,7 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
         while True:
             # Verificar si ha pasado más de 60 segundos
             if (time.time() - start_total_time) > 60 or (isinstance(result, dict) and len(result.get('results', [])) >= 10000):
-                print("Timeout de 60 segundos alcanzado. Retornando resultados parciales.")
+                #print("Timeout de 60 segundos alcanzado. Retornando resultados parciales.")
                 result = client.get_query_results(queryId=query_id)
                 result["status"] = "Complete"  # Marcamos como timeout
                 return result
@@ -245,18 +290,18 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
             result = client.get_query_results(queryId=query_id)
             query_time = time.time() - query_start_time
             total_time = time.time() - start_total_time
-            print(f"Última consulta tardó: {query_time:.2f} segundos | Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
+            #print(f"Última consulta tardó: {query_time:.2f} segundos | Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
 
             # Verificar si la consulta terminó
             if result["status"] in ["Complete", "Failed", "Cancelled"]:
-                print(f"Consulta completada. Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
+                #print(f"Consulta completada. Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
                 return result
 
             # Esperar antes de volver a consultar (opcional, evita saturar)
             time.sleep(2)  # Espera 2 segundos entre checks
             query_start_time = time.time()
     except Exception as e:
-        print(f"\nERROR AL EJECUTAR QUERY:\n{query_string}\nERROR: {str(e)}\n")
+        #print(f"\nERROR AL EJECUTAR QUERY:\n{query_string}\nERROR: {str(e)}\n")
         raise
 
 def construir_data_query(params, page, limit):
@@ -281,15 +326,6 @@ def construir_data_query(params, page, limit):
     query_parts.extend(["| sort @timestamp desc",f"| limit {LIMIT}",])
 
     query = "\n".join(query_parts)
-    return query
-
-def construir_count_query(data_query):
-    """Construye y loguea la query de conteo"""
-    data_query = data_query.split("\n")
-    data_query.append("| stats count() as total")
-    query = "\n".join(data_query)
-    print("\nQUERY DE CONTEO CONSTRUIDA:")
-    print(query)
     return query
 
 def procesar_logs(results):
@@ -494,43 +530,27 @@ def extract_log_json(endpoint, api, metodo, usuario, data_json):
 def aplicar_filtros_adicionales(eventos, params):
     """Versión modificada para diagnóstico"""
     if not eventos:
-        print("\n=== ADVERTENCIA: eventos vacíos antes de filtrar ===")
         return []
-
     filtered = eventos
-
-    print("\n=== PARÁMETROS DE FILTRADO ===")
-    print(f"Params recibidos: {filtered}")
-    print(f"Params recibidos: {params}")
 
     # Filtrar por método si está especificado
     if params.get("tipo_log"):
-        print(f"\nFiltrando por tipo_log: {params['tipo_log']}")
         filtered = [ log for log in filtered if params["tipo_log"].lower() in log.tipo_log.lower() ]
-        print(f"Registros después de filtrar por tipo_log: {len(filtered)}")
 
     # Filtrar por API si está especificado
     if params.get("api"):
-        print(f"\nFiltrando por api: {params['api']}")
         filtered = [ log for log in filtered if params["api"].lower() in log.peticion_realizada.lower() ]
-        print(f"Registros después de filtrar por api: {len(filtered)}")
 
     # Filtrar por endpoint si está especificado
     if params.get("endpoint"):
-        print(f"\nFiltrando por endpoint: {params['endpoint']}")
         filtered = [ log for log in filtered if params["endpoint"].lower() in log.peticion_realizada.lower() ]
-        print(f"Registros después de filtrar por endpoint: {len(filtered)}")
 
     # Filtrar por IP si está especificado
     if params.get("ip"):
-        print(f"\nFiltrando por ip: {params['ip']}")
         filtered = [log for log in filtered if params["ip"] == log.direccion_accion]
-        print(f"Registros después de filtrar por ip: {len(filtered)}")
     # Filtrar por IP si está especificado
     if params.get("ip"):
-        print(f"\nFiltrando por palabra clave: {params['palabraClave']}")
         filtered = [log for log in filtered if params["palabraClave"] in log.data_error]
-        print(f"Registros después de filtrar por palabra clave: {len(filtered)}")
 
     return filtered
 
@@ -545,10 +565,7 @@ def reemplazar_valores_log(metodo, log):
         str: Consulta SQL con los valores reemplazados.
     """
     if metodo.upper() == "POST":
-        patron = r"\[(.*?)\] - (.+)"
-        match = re.search(patron, log)
-        print("POST")
-        print(match)
+        match = re.search(PATRON, log)
         if match:
             consulta = match.group(1)
             valores = match.group(2).split(", ")
@@ -560,11 +577,8 @@ def reemplazar_valores_log(metodo, log):
         else:
             return "El formato del log POST no es válido: " + log
 
-    elif metodo.upper() == "PUT":
-        patron = r"\[(.*?)\] - (.+)"
-        match = re.search(patron, log)
-        print("PUT")
-        print(match)
+    elif metodo.upper() in ["PUT", "GET", "DELETE"]:
+        match = re.search(PATRON, log)
         if match:
             consulta = match.group(1)
             valores = re.findall(r"`([^`]*)`", match.group(2))
@@ -573,33 +587,7 @@ def reemplazar_valores_log(metodo, log):
                 consulta = consulta.replace(f"${i}", valor.strip())
             return consulta
         else:
-            return "El formato del log PUT no es válido: " + log
-
-    elif metodo.upper() == "GET":
-        patron = r"\[(.*?)\] - (.+)"
-        match = re.search(patron, log)
-        if match:
-            consulta = match.group(1)
-            valores = re.findall(r"`([^`]*)`", match.group(2))
-
-            for i, valor in enumerate(valores, start=1):
-                consulta = consulta.replace(f"${i}", valor.strip())
-            return consulta
-        else:
-            return "El formato del log GET no es válido: " + log
-
-    elif metodo.upper() == "DELETE":
-        patron = r"\[(.*?)\] - (.+)"
-        match = re.search(patron, log)
-        if match:
-            consulta = match.group(1)
-            valores = re.findall(r"`([^`]*)`", match.group(2))
-
-            for i, valor in enumerate(valores, start=1):
-                consulta = consulta.replace(f"${i}", valor.strip())
-            return consulta
-        else:
-            return "El formato del log DELETE no es válido: " + log
+            return f"El formato del log {metodo.upper()} no es válido: {log}"
     else:
         return
 

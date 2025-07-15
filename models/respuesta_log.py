@@ -21,7 +21,7 @@ class RespuestaLog:
 
     def to_dict(self):
         return {
-            'tipo_log': self.tipo_log,
+            'tipoLog': self.tipoLog,
             'fecha': self.fecha,
             'rolResponsable': self.rolResponsable,
             'nombreResponsable': self.nombreResponsable,

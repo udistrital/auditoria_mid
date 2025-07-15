@@ -9,8 +9,7 @@ def add_routing(app):
     app.register_blueprint(healthCheckController)
     app.register_blueprint(auditoriaController, url_prefix='/v1')
 
-
-healthCheckController = Blueprint('healthCheckController', __name__, url_prefix='/')
+healthCheckController = Blueprint('healthCheckController', __name__, url_prefix='/v1')
 CORS(healthCheckController)
 
 @healthCheckController.route('/')
@@ -94,26 +93,13 @@ class FilterLogsPaginated(Resource):
         400: 'Bad request',
         404: 'Not found',
         500: 'Server error'
-    })
-    @documentDoc.param('nombreApi', 'Nombre del API (ej: polux_crud)', required=True)
-    @documentDoc.param('entornoApi', 'Entorno (SANDBOX, PRODUCTION, TEST)', required=True)
-    @documentDoc.param('fechaInicio', 'Fecha de inicio (YYYY-MM-DD)', required=True)
-    @documentDoc.param('horaInicio', 'Hora de inicio (HH:MM)', required=True)
-    @documentDoc.param('fechaFin', 'Fecha de fin (YYYY-MM-DD)', required=True)
-    @documentDoc.param('horaFin', 'Hora de fin (HH:MM)', required=True)
-    @documentDoc.param('page', 'Número de página', default=1)
-    @documentDoc.param('limit', 'Registros por página', default=10)
-    @documentDoc.param('tipo_log', 'Método HTTP (GET, POST, PUT, DELETE)')
-    @documentDoc.param('codigoResponsable', 'Email del usuario responsable')
-    @documentDoc.param('api', 'API específica')
-    @documentDoc.param('endpoint', 'Endpoint específico')
-    @documentDoc.param('ip', 'Dirección IP')
+    }, body=auditoria_params['filtro_log_model'])
     @cross_origin(**api_cors_config)
-    def get(self):
+    def post(self):
         """
         Filtra y pagina logs de AWS con base en parámetros en la URL.
         
         Permite búsqueda incremental con paginación para mejor performance.
         """
-        params = request.args
+        params = request.json
         return auditoria.get_logs_filtrados(params)

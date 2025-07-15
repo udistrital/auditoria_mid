@@ -12,19 +12,12 @@ from pytz import timezone, utc
 from datetime import datetime, timedelta
 import time
 
-MIME_TYPE_JSON = "application/json"
-ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
-USUARIO_NO_REGISTRADO ="Usuario no registrado"
-NOMBRE_NO_ENCONTRADO = "Nombre no encontrado"
-
 client = boto3.client(
     'logs',
-    region_name='us-east-1',
-    aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
-    aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
+    region_name='us-east-1'
 )
 
-def get_all_logs(params):
+def getAllLogs(params):
     """
         Consulta eventos de logs en CloudWatch para un grupo de logs específico en un rango de tiempo
         
@@ -51,14 +44,14 @@ def get_all_logs(params):
         events = [{"timestamp": event['timestamp'], "message": event['message']} for event in response.get('events', [])]
         
         if not events:
-            return Response(json.dumps({'Status': 'No logs found', 'Code': '404', 'Data': []}), status=404, mimetype=MIME_TYPE_JSON)
+            return Response(json.dumps({'Status': 'No logs found', 'Code': '404', 'Data': []}), status=404, mimetype='application/json')
         
-        return Response(json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': events}), status=200, mimetype=MIME_TYPE_JSON)
+        return Response(json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': events}), status=200, mimetype='application/json')
     
     except Exception as e:
-        return Response(json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}), status=500, mimetype=MIME_TYPE_JSON)
+        return Response(json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}), status=500, mimetype='application/json')
 
-def get_one_log(params):
+def getOneLog(params):
     """
         Consulta un solo evento de logs en CloudWatch para un grupo de logs específico con filtros adicionales.
 
@@ -78,43 +71,35 @@ def get_one_log(params):
         json : Evento de log o información de error.
     """
     try:
-        entorno_api = ''
+        entornoApi = ''
 
-        filtro_busqueda=params["filterPattern"]
-        filtro_email_user=params["emailUser"]
+        filtroBusqueda=params["filterPattern"]
+        filtroEmailUser=params["emailUser"]
         query_string = ""
-        limit = int(params.get("limit", 10))  # Por defecto 10
-        page = int(params.get("page", 1))     # Por defecto 1
 
-        if filtro_busqueda and filtro_email_user:
+        if filtroBusqueda and filtroEmailUser:
             query_string = """
             fields @timestamp, @message
-            | filter @message like /{filtro_busqueda}/ 
-                {'and @message like /middleware/' if filtro_busqueda else ''}
-                {'and @message like /' + filtro_email_user + '/' if filtro_email_user else ''}
+            | filter @message like /{}/ 
+            and @message like /middleware/ 
+            and @message like /{}/
             | sort @timestamp desc
-            | limit {}
-            """.format(filtro_busqueda, filtro_email_user,limit)
-        elif filtro_busqueda:
+            """.format(filtroBusqueda, filtroEmailUser)
+        elif filtroBusqueda:
             query_string = """
             fields @timestamp, @message
-            | filter @message like /{}/
+            | filter @message like /{}/ 
             and @message like /middleware/
-            | limit {}
             | sort @timestamp desc
-            """.format(filtro_busqueda,limit)
+            """.format(filtroBusqueda)
         else:
             raise ValueError("El parámetro del método HTTP o el correo del usuario son obligatorios.")
         
         local_tz = timezone('America/Bogota')  
         utc_tz = utc
-        if not params.get('startTime') or not params.get('endTime'):
-            raise ValueError("startTime y endTime son obligatorios y deben estar en formato 'YYYY-MM-DD HH:MM'")
-        try:
-            local_start_time = datetime.strptime(params['startTime'], "%Y-%m-%d %H:%M")
-            local_end_time = datetime.strptime(params['endTime'], "%Y-%m-%d %H:%M")
-        except ValueError as e:
-            raise ValueError(f"Formato de fecha inválido: {e}")
+
+        local_start_time = datetime.strptime(params['startTime'], "%Y-%m-%d %H:%M")
+        local_end_time = datetime.strptime(params['endTime'], "%Y-%m-%d %H:%M")
 
         utc_start_time = local_tz.localize(local_start_time).astimezone(utc_tz)
         utc_end_time = local_tz.localize(local_end_time).astimezone(utc_tz)
@@ -123,12 +108,12 @@ def get_one_log(params):
         end_time = int(utc_end_time.timestamp())
 
         if params['environmentApi'] == 'PRODUCTION':
-            entorno_api = 'prod'
+            entornoApi = 'prod'
         else:
-            entorno_api = 'test'
+            entornoApi = 'test'
 
         response = client.start_query(
-            logGroupName = f"/ecs/{params['logGroupName']}_{entorno_api}",
+            logGroupName = f"/ecs/{params['logGroupName']}_{entornoApi}",
             startTime=start_time,
             endTime=end_time,
             queryString=query_string
@@ -144,96 +129,61 @@ def get_one_log(params):
         if result['status'] == 'Complete' and result['results']:
             events = []
             for log in result['results']:
+                timestamp = next(item['value'] for item in log if item['field'] == '@timestamp')
                 message = next(item['value'] for item in log if item['field'] == '@message')
+
                 extracted_data = extract_log_data(message)
-                fecha_convertida = ""
-                usuario_log = ""
-                rol_usuario_buscado = ""
-                documento_usuario_buscado = ""
-                nombre_usuario_buscado = ""
+                fechaConvertida = ""
+                usuarioLog = ""
+                rolUsuarioBuscado = ""
 
                 try:
-                    fecha_convertida = datetime.strptime(extracted_data.get("fecha"), "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d %H:%M:%S")
+                    fechaConvertida = datetime.strptime(extracted_data.get("fecha"), "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d %H:%M:%S")
                 except Exception as e:
-                    fecha_convertida = ""
+                    fechaConvertida = ""
 
-                usuario_sin_espacio = extracted_data.get("usuario", "").strip()
-                if usuario_sin_espacio not in ["N/A", "Error", "Error WSO2", ERROR_WSO2_SIN_USUARIO, ""]:
-                    usuario_log = f"{usuario_sin_espacio}@udistrital.edu.co"
+                usuarioSinEspacio = extracted_data.get("usuario", "").strip()
+                if usuarioSinEspacio not in ["N/A", "Error", "Error WSO2", "Error WSO2 - Sin usuario", ""]:
+                    usuarioLog = f"{usuarioSinEspacio}@udistrital.edu.co"
                 else:
-                    usuario_log = ERROR_WSO2_SIN_USUARIO
+                    usuarioLog = "Error WSO2 - Sin usuario"
 
-                if usuario_log not in [ERROR_WSO2_SIN_USUARIO]:
-                    resultado = buscar_user_rol(usuario_log)
-                    
-                    if USUARIO_NO_REGISTRADO in resultado:
-                        rol_usuario_buscado = "Rol no encontrado"
-                        documento_usuario_buscado = "Documento no encontrado"
-                        nombre_usuario_buscado = NOMBRE_NO_ENCONTRADO
-                    elif "error" in resultado:
-                        rol_usuario_buscado = "Error al obtener roles"
-                        documento_usuario_buscado = "Error al obtener documento"
-                        nombre_usuario_buscado = "Error al obtener nombre"
-                    else:
-                        rol_usuario_buscado = resultado.get("roles")
-                        documento_usuario_buscado = resultado.get("documento")
-                        nombre_usuario_buscado = buscar_nombre_user(documento_usuario_buscado)
+                if usuarioLog not in ["Error WSO2 - Sin usuario"]:
+                    rolUsuarioBuscado = buscar_user_rol(usuarioLog)
                 else:
-                    rol_usuario_buscado = "Rol no encontrado"
-                    documento_usuario_buscado = "Documento no encontrado"
-                    nombre_usuario_buscado = NOMBRE_NO_ENCONTRADO
-
+                    rolUsuarioBuscado = "Rol no encontrado"
+                tipo_error, mensaje_error = extraer_error(message)
                 log_obj = respuesta_log.RespuestaLog(
-                    tipo_log=extracted_data.get("tipo_log"),
-                    fecha=fecha_convertida,
-                    rol_responsable=usuario_log,
-                    nombre_responsable=nombre_usuario_buscado,
-                    documento_responsable=documento_usuario_buscado,
-                    direccion_accion=extracted_data.get("direccionAccion", "N/A"),
-                    rol=rol_usuario_buscado,
-                    apis_consumen=extracted_data.get("apiConsumen", "N/A"),
-                    peticion_realizada=extract_log_json(extracted_data.get("endpoint"),extracted_data.get("api"),extracted_data.get("metodo"),usuario_log,extracted_data.get("data")),
-                    evento_bd=reemplazar_valores_log(extracted_data.get("metodo"),extracted_data.get("sql_orm")),
-                    tipo_error="N/A",
-                    mensaje_error=message
+                    tipoLog=extracted_data.get("tipoLog"),
+                    fecha=fechaConvertida,
+                    rolResponsable=usuarioLog,
+                    nombreResponsable="N/A",
+                    documentoResponsable="N/A",
+                    direccionAccion=extracted_data.get("direccionAccion", "N/A"),
+                    rol=rolUsuarioBuscado,
+                    apisConsumen=extracted_data.get("apiConsumen", "N/A"),
+                    peticionRealizada=extract_log_json(extracted_data.get("endpoint"),extracted_data.get("api"),extracted_data.get("metodo"),usuarioLog,extracted_data.get("data")),
+                    eventoBD=reemplazar_valores_log(extracted_data.get("metodo"),extracted_data.get("sql_orm")),
+                    tipoError=tipo_error,
+                    mensajeError=mensaje_error
                 )
-                print(extracted_data)
-                print(events)
                 events.append(log_obj)
-                start_idx = (page - 1) * limit
-                end_idx = start_idx + limit
-                paged_logs = events[start_idx:end_idx]
-                return Response(
-                json.dumps({
-                    'Status': 'Successful request',
-                    'Code': '200',
-                    'Data': [vars(log) for log in paged_logs],
-                    'Pagination': {
-                        'page': page,
-                        'limit': limit,
-                        'total': len(events),
-                        'pages': (len(events) + limit - 1) // limit
-                    }
-                }),
-                status=200,
-                mimetype=MIME_TYPE_JSON
-            )
-            '''return Response(
+            return Response(
                 json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': [vars(log) for log in events]}),
                 status=200,
-                mimetype=MIME_TYPE_JSON
-            )'''
+                mimetype='application/json'
+            )
         return Response(
             json.dumps({'Status': 'No logs found or query failed', 'Code': '404', 'Data': []}),
             status=404,
-            mimetype=MIME_TYPE_JSON
+            mimetype='application/json'
         )
 
     except Exception as e:
         return Response(
             json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}),
             status=500,
-            mimetype=MIME_TYPE_JSON
+            mimetype='application/json'
         )
     
 def extraer_error(log_string):
@@ -307,7 +257,7 @@ def extract_log_data(log_entry):
         "user_agent": r"user_agent:\s([^\s,]+)",
         "usuario": r"\b, user:\s([^\s,]+)",
         "data": r"data:\s({.*})", 
-        "tipo_log": r"\[([a-zA-Z0-9\._-]+)(?=\.\w+:)",
+        "tipoLog": r"\[([a-zA-Z0-9\._-]+)(?=\.\w+:)",
         "sql_orm": r"sql_orm:\s\{(.*?)\},\s+ip_user:"
     }
 
@@ -328,17 +278,15 @@ def extract_log_data(log_entry):
 
     return extracted_data
 
-def extract_log_json(endpoint,api,metodo,usuario,data_json):
+def extract_log_json(endpoint,api,metodo,usuario,dataJson):
     data = {}
     data["endpoint"] = endpoint
     data["api"] = api
     data["metodo"] = metodo
     data["usuario"] = usuario
-    data["data"] = data_json
+    data["data"] = dataJson
     json_result = json.dumps(data, indent=4)
     return json_result
-
-  
 
 def buscar_user_rol(user_email):
     """
@@ -351,43 +299,24 @@ def buscar_user_rol(user_email):
         dict: La respuesta del servidor en formato JSON, o un error en caso de falla.
     """
     url = f"{os.environ['API_AUDITORIA_MID']}/v1/token/userRol"
-    headers = {"Content-Type": MIME_TYPE_JSON}
+    headers = {"Content-Type": "application/json"}
     
     payload = {"user": user_email}
     
-    try:    
-        response = requests.post(url, json=payload, headers=headers)
-        response_data = response.json()  
-
-        if response.status_code == 400 and "System" in response_data and "Error" in response_data["System"]:
-            return {USUARIO_NO_REGISTRADO}
-        else:
-            response.raise_for_status() 
-
-            roles_a_excluir = ["Internal/everyone"]
-            filtered_roles = [role for role in response_data.get("role", []) if role not in roles_a_excluir]
-
-            return {"roles": ", ".join(filtered_roles), "documento": response_data.get("documento")}
-    
-    except requests.exceptions.RequestException:
-        return {USUARIO_NO_REGISTRADO} 
-
-def buscar_nombre_user(documento):
-    url = f"{os.environ['API_TERCEROS_CRUD']}/v1/datos_identificacion?query=numero:{documento}"
-    headers = {"Content-Type": MIME_TYPE_JSON}
-    
     try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()  
-        data = response.json()
+        roles_a_excluir = ["Internal/everyone"] 
 
-        if isinstance(data, list) and len(data) > 0:
-            nombre_completo = data[0].get("TerceroId", {}).get("NombreCompleto", NOMBRE_NO_ENCONTRADO)
-            return nombre_completo
-        else:
-            return NOMBRE_NO_ENCONTRADO
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()  
+
+        data = response.json()
+        roles = data.get("role", [])
+        
+        filtered_roles = [role for role in roles if role not in roles_a_excluir]
+
+        return ", ".join(filtered_roles)
     except requests.exceptions.RequestException as e:
-        return {"error": str(e)} 
+        return {"error": str(e)}  
 
 def reemplazar_valores_log(metodo,log):
     """
@@ -402,8 +331,6 @@ def reemplazar_valores_log(metodo,log):
     if metodo.upper() == "POST":
         patron = r'\[(.*?)\] - (.+)'
         match = re.search(patron, log)
-        print('POST')
-        print(match)
         if match:
             consulta = match.group(1)
             valores = match.group(2).split(", ")
@@ -418,8 +345,6 @@ def reemplazar_valores_log(metodo,log):
     elif metodo.upper() == "PUT":
         patron = r'\[(.*?)\] - (.+)'
         match = re.search(patron, log)
-        print('PUT')
-        print(match)
         if match:
             consulta = match.group(1)
             valores = re.findall(r'`([^`]*)`', match.group(2))
@@ -430,31 +355,5 @@ def reemplazar_valores_log(metodo,log):
         else:
             return "El formato del log PUT no es válido: " + log
         
-    elif metodo.upper() == "GET":
-        patron = r'\[(.*?)\] - (.+)'
-        match = re.search(patron, log)
-        if match:
-            consulta = match.group(1)
-            valores = re.findall(r'`([^`]*)`', match.group(2))
-
-            for i, valor in enumerate(valores, start=1):
-                consulta = consulta.replace(f"${i}", valor.strip())
-            return consulta
-        else:
-            return "El formato del log GET no es válido: " + log
-        
-    elif metodo.upper() == "DELETE":
-        patron = r'\[(.*?)\] - (.+)'
-        match = re.search(patron, log)
-        if match:
-            consulta = match.group(1)
-            valores = re.findall(r'`([^`]*)`', match.group(2))
-
-            for i, valor in enumerate(valores, start=1):
-                consulta = consulta.replace(f"${i}", valor.strip())
-            return consulta
-        else:
-            return "El formato del log DELETE no es válido: " + log
     else:
-
         return log
