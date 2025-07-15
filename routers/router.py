@@ -93,7 +93,11 @@ class FilterLogsPaginated(Resource):
         400: 'Bad request',
         404: 'Not found',
         500: 'Server error'
-    })
+    }
+    #, body=auditoria_params['filtro_log_model'])
+    )
+    # Añade el modelo del body
+    @documentNamespaceController.expect(auditoria_params['filtro_log_model']) 
     @documentDoc.param('nombreApi', 'Nombre del API (ej: polux_crud)', required=True)
     @documentDoc.param('entornoApi', 'Entorno (SANDBOX, PRODUCTION, TEST)', required=True)
     @documentDoc.param('fechaInicio', 'Fecha de inicio (YYYY-MM-DD)', required=True)
@@ -115,5 +119,6 @@ class FilterLogsPaginated(Resource):
         
         Permite búsqueda incremental con paginación para mejor performance.
         """
+        #params = request.json
         params = request.args
         return auditoria.get_logs_filtrados(params)
