@@ -261,7 +261,7 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
         """Hilo que imprime el tiempo y verifica timeout"""
         while not stop_event.is_set():
             elapsed = time.time() - start_time
-            print(f"\rTiempo transcurrido: {elapsed:.1f} segundos", end="", flush=True)
+            #print(f"\rTiempo transcurrido: {elapsed:.1f} segundos", end="", flush=True)
             # Verificar si alcanzó el timeout
             if elapsed >= timeout:
                 stop_event.set()  # Activar señal de parada
@@ -269,10 +269,10 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
             time.sleep(0.1)  # Verificar más frecuentemente (cada 100ms)
 
     try:
-        timeout = 60  # Tiempo máximo en segundos
+        timeout = 60  # Tiempo máximo de espera en segundos
         stop_event = Event()
         start_total_time = time.time()
-        
+
         # Iniciar contador con referencia al mismo start_time
         timer_thread = Thread(target=print_timer, args=(stop_event, start_total_time, timeout))
         timer_thread.daemon = True
@@ -285,17 +285,17 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
             queryString=query_string,
         )
         query_id = response["queryId"]
-        
+
         result = []
         while not stop_event.is_set():  # Ahora verificamos la señal de parada
             # Obtener resultados
             result = client.get_query_results(queryId=query_id)
-            
+
             # Verificar si alcanzó el límite de registros
             if isinstance(result, dict) and len(result.get('results', [])) >= 10000:
                 stop_event.set()
                 break
-                
+
             # Verificar si la consulta terminó naturalmente
             if result.get("status") in ["Complete", "Failed", "Cancelled"]:
                 stop_event.set()
@@ -304,14 +304,14 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
             time.sleep(2)  # Intervalo entre checks
 
         # Procesar resultado final
-        print()  # Salto de línea después del contador
+        #print()  # Salto de línea después del contador
         if isinstance(result, dict):
             result["status"] = "Complete" if result.get("status") != "Failed" else "Failed"
-            
+
             elapsed = time.time() - start_total_time
-            print(f"Consulta {'completada' if result['status'] == 'Complete' else 'fallida'} en {elapsed:.1f} segundos")
-            print(f"Registros obtenidos: {len(result.get('results', []))}")
-            
+            #print(f"Consulta {'completada' if result['status'] == 'Complete' else 'fallida'} en {elapsed:.1f} segundos")
+            #print(f"Registros obtenidos: {len(result.get('results', []))}")
+
         return result
 
     except Exception as e:
@@ -322,6 +322,7 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
         stop_event.set()
         if 'timer_thread' in locals():
             timer_thread.join(timeout=1)
+
 def construir_data_query(params, page, limit):
     """Construye y loguea la query de datos con paginación adecuada"""
     filtro_busqueda = re.escape(params["filterPattern"])
