@@ -93,13 +93,77 @@ class FilterLogsPaginated(Resource):
         400: 'Bad request',
         404: 'Not found',
         500: 'Server error'
-    }, body=auditoria_params['filtro_log_model'])
+    },
+    body=auditoria_params['filtro_log_model'])
     @cross_origin(**api_cors_config)
     def post(self):
         """
-        Filtra y pagina logs de AWS con base en parámetros en la URL.
-        
-        Permite búsqueda incremental con paginación para mejor performance.
+        Filtra y pagina logs de AWS con base en parámetros específicos.
+
+        Permite búsqueda avanzada con múltiples filtros y paginación para mejor performance.
+        Los logs pueden ser procesados completamente (standard) o mínimamente (flexible) según el typeSearch.
+
+        Ejemplo de parámetros requeridos:
+        ```json
+        {
+            "fechaInicio":1751371200,
+            "horaInicio":"07:00",
+            "fechaFin":1751461200,
+            "horaFin":"08:00",
+            "tipo_log":"GET",
+            "codigoResponsable":"",
+            "palabraClave":"",
+            "nombreApi":"polux_crud",
+            "entornoApi":"SANDBOX",
+            "typeSearch":"flexible",
+            "pagina":1,
+            "limite":5000
+        }
+        ```
+        La respuesta para tipo de búsqueda 'Estandar' incluye metadatos de paginación y los logs encontrados.
+        Cada log contiene:
+        - Tipo de log
+        - Fecha y hora
+        - Usuario responsable
+        - Nombre del responsable
+        - Documento del responsable
+        - Rol del responsable
+        - Dirección IP
+        - API consumida
+        - Petición realizada (endpoint, método, datos)
+        - Evento en base de datos (si aplica)
+        - Tipo de error (si aplica)
+        - Mensaje de error (si aplica)
+
+        La respuesta para  tipo de búsqueda 'Flexible' incluye páginación, pero los datos en crudo,es decir el mensaje de error sin procesar
+        ya que el procesamiento de la información se hace directamente desde el front.
+
+        ```json
+        {
+            "Status": "Successful request",
+            "Code": "200",
+            "Data": [
+                "2025/07/01 12:00:21.715 [I] [middleware.go:163] {"
+                "    app_name: polux_crud,"
+                "    host: xxx.xx.x.xxx:xxxxx,"
+                "    end_point: /,"
+                "    method: GET,"
+                "    date: 2025-07-01T12:00:21Z,"
+                "    sql_orm: {...},"
+                "    ip_user: xxx.xx.x.xxx,"
+                "    user_agent: ELB-HealthChecker/2.0,"
+                "    user: Error WSO2,"
+                "    data: {\"RouterPattern\":\"/\"}"
+                "}"
+                ...
+            ],
+            "Pagination": {
+                "pagina": 1,
+                "limite": 20,
+                "total registros": 20,
+                "paginas": 1
+            }
+        }
         """
         params = request.json
         return auditoria.get_logs_filtrados(params)
