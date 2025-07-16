@@ -10,6 +10,8 @@ from pytz import timezone, utc
 from datetime import datetime
 from botocore.config import Config
 import time
+from threading import Thread
+from threading import Event
 
 MIME_TYPE_JSON = "application/json"
 PATRON = r"\[(.*?)\] - (.+)"
@@ -252,21 +254,30 @@ def convertir_tiempo_a_utc(start_str, end_str, timezone_str="America/Bogota"):
 
 def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
     """
-    Lanza una consulta a CloudWatch Logs Insights y espera hasta obtener el resultado.
-    Es una función bloqueante (usa while) que consulta periódicamente si el resultado está listo.
-
-    Parameters
-    ----------
-        client: cliente AWS Boto3 para CloudWatch Logs.
-        query_string: string generado previamente con filtros.
-        log_group: nombre del grupo de logs.
-        start_time y end_time: tiempo en formato UTC (epoch seconds).
-
-    Return
-    ------
-        Diccionario con los resultados de la query (status, results, etc.).
+    Lanza una consulta a CloudWatch Logs Insights con timeout de 60 segundos.
+    Muestra contador en tiempo real y se detiene exactamente al llegar al límite.
     """
+    def print_timer(stop_event, start_time, timeout):
+        """Hilo que imprime el tiempo y verifica timeout"""
+        while not stop_event.is_set():
+            elapsed = time.time() - start_time
+            #print(f"\rTiempo transcurrido: {elapsed:.1f} segundos", end="", flush=True)
+            # Verificar si alcanzó el timeout
+            if elapsed >= timeout:
+                stop_event.set()  # Activar señal de parada
+                break
+            time.sleep(0.1)  # Verificar más frecuentemente (cada 100ms)
+
     try:
+        timeout = 60  # Tiempo máximo de espera en segundos
+        stop_event = Event()
+        start_total_time = time.time()
+
+        # Iniciar contador con referencia al mismo start_time
+        timer_thread = Thread(target=print_timer, args=(stop_event, start_total_time, timeout))
+        timer_thread.daemon = True
+        timer_thread.start()
+
         response = client.start_query(
             logGroupName=log_group,
             startTime=start_time,
@@ -274,35 +285,43 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
             queryString=query_string,
         )
         query_id = response["queryId"]
-        #print(f"ID de consulta en AWS: {query_id}")
-        start_total_time = time.time()  # Tiempo inicial total
-        query_start_time = time.time()  # Tiempo inicial de cada consulta
-        result =[]
-        while True:
-            # Verificar si ha pasado más de 60 segundos
-            if (time.time() - start_total_time) > 60 or (isinstance(result, dict) and len(result.get('results', [])) >= 10000):
-                #print("Timeout de 60 segundos alcanzado. Retornando resultados parciales.")
-                result = client.get_query_results(queryId=query_id)
-                result["status"] = "Complete"  # Marcamos como timeout
-                return result
 
-            # Obtener resultados y medir tiempos
+        result = []
+        while not stop_event.is_set():  # Ahora verificamos la señal de parada
+            # Obtener resultados
             result = client.get_query_results(queryId=query_id)
-            query_time = time.time() - query_start_time
-            total_time = time.time() - start_total_time
-            #print(f"Última consulta tardó: {query_time:.2f} segundos | Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
 
-            # Verificar si la consulta terminó
-            if result["status"] in ["Complete", "Failed", "Cancelled"]:
-                #print(f"Consulta completada. Tiempo total: {total_time:.2f} segundos, registros obtenidos: {len(result['results'])}")
-                return result
+            # Verificar si alcanzó el límite de registros
+            if isinstance(result, dict) and len(result.get('results', [])) >= 10000:
+                stop_event.set()
+                break
 
-            # Esperar antes de volver a consultar (opcional, evita saturar)
-            time.sleep(2)  # Espera 2 segundos entre checks
-            query_start_time = time.time()
+            # Verificar si la consulta terminó naturalmente
+            if result.get("status") in ["Complete", "Failed", "Cancelled"]:
+                stop_event.set()
+                break
+
+            time.sleep(2)  # Intervalo entre checks
+
+        # Procesar resultado final
+        #print()  # Salto de línea después del contador
+        if isinstance(result, dict):
+            result["status"] = "Complete" if result.get("status") != "Failed" else "Failed"
+
+            elapsed = time.time() - start_total_time
+            #print(f"Consulta {'completada' if result['status'] == 'Complete' else 'fallida'} en {elapsed:.1f} segundos")
+            #print(f"Registros obtenidos: {len(result.get('results', []))}")
+
+        return result
+
     except Exception as e:
-        #print(f"\nERROR AL EJECUTAR QUERY:\n{query_string}\nERROR: {str(e)}\n")
+        stop_event.set()
+        print(f"\nError en la consulta: {str(e)}")
         raise
+    finally:
+        stop_event.set()
+        if 'timer_thread' in locals():
+            timer_thread.join(timeout=1)
 
 def construir_data_query(params, page, limit):
     """Construye y loguea la query de datos con paginación adecuada"""
