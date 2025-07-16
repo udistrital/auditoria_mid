@@ -31,7 +31,7 @@ definitions:
     - tipo_log
     type: object
 info:
-  description: Api mid para la obtenciÛn de logs de AWS
+  description: Api mid para la obtenci√≥n de logs de AWS
   title: auditoria_mid
   version: '1.0'
 paths:
@@ -61,7 +61,7 @@ paths:
         \ (str): Hora de inicio en formato hh:mm\n    - fechaFin (str): Fecha de fin\
         \ en formato aaaa-mm-dd\n    - horaFin (str): Hora de fin en formato hh:mm\n\
         \    - tipo_log (str): Tipo de log (GET, POST, PUT, etc.)\n    - codigoResponsable\
-        \ (int): CÛdigo del responsable\n    - rolResponsable (str): Rol del responsable\n\
+        \ (int): C√≥digo del responsable\n    - rolResponsable (str): Rol del responsable\n\
         \nReturns\n-------\nResponse\n    Respuesta con los logs filtrados en formato\
         \ JSON."
       operationId: post_filter_logs
@@ -82,74 +82,45 @@ paths:
           description: Not found
         '500':
           description: Server error
-      summary: Filtra los logs de AWS con base en par·metros especÌficos
+      summary: Filtra los logs de AWS con base en par√°metros espec√≠ficos
       tags:
       - auditoria
   /auditoria/buscarLogsFiltrados:
-    get:
-      description: Permite b˙squeda incremental con paginaciÛn para mejor performance.
-      operationId: get_filter_logs_paginated
+    post:
+      description: "Permite b√∫squeda avanzada con m√∫ltiples filtros y paginaci√≥n para\
+        \ mejor performance.\nLos logs pueden ser procesados completamente (standard)\
+        \ o m√≠nimamente (flexible) seg√∫n el typeSearch.\n\nEjemplo de par√°metros requeridos:\n\
+        ```json\n{\n    \"fechaInicio\":1751371200,\n    \"horaInicio\":\"07:00\"\
+        ,\n    \"fechaFin\":1751461200,\n    \"horaFin\":\"08:00\",\n    \"tipo_log\"\
+        :\"GET\",\n    \"codigoResponsable\":\"\",\n    \"palabraClave\":\"\",\n \
+        \   \"nombreApi\":\"polux_crud\",\n    \"entornoApi\":\"SANDBOX\",\n    \"\
+        typeSearch\":\"flexible\",\n    \"pagina\":1,\n    \"limite\":5000\n}\n```\n\
+        La respuesta para tipo de b√∫squeda 'Estandar' incluye metadatos de paginaci√≥n\
+        \ y los logs encontrados.\nCada log contiene:\n- Tipo de log\n- Fecha y hora\n\
+        - Usuario responsable\n- Nombre del responsable\n- Documento del responsable\n\
+        - Rol del responsable\n- Direcci√≥n IP\n- API consumida\n- Petici√≥n realizada\
+        \ (endpoint, m√©todo, datos)\n- Evento en base de datos (si aplica)\n- Tipo\
+        \ de error (si aplica)\n- Mensaje de error (si aplica)\n\nLa respuesta para\
+        \  tipo de b√∫squeda 'Flexible' incluye p√°ginaci√≥n, pero los datos en crudo,es\
+        \ decir el mensaje de error sin procesar\nya que el procesamiento de la informaci√≥n\
+        \ se hace directamente desde el front.\n\n```json\n{\n    \"Status\": \"Successful\
+        \ request\",\n    \"Code\": \"200\",\n    \"Data\": [\n        \"2025/07/01\
+        \ 12:00:21.715 [I] [middleware.go:163] {\"\n        \"    app_name: polux_crud,\"\
+        \n        \"    host: xxx.xx.x.xxx:xxxxx,\"\n        \"    end_point: /,\"\
+        \n        \"    method: GET,\"\n        \"    date: 2025-07-01T12:00:21Z,\"\
+        \n        \"    sql_orm: {...},\"\n        \"    ip_user: xxx.xx.x.xxx,\"\n\
+        \        \"    user_agent: ELB-HealthChecker/2.0,\"\n        \"    user: Error\
+        \ WSO2,\"\n        \"    data: {\"RouterPattern\":\"/\"}\"\n        \"}\"\n\
+        \        ...\n    ],\n    \"Pagination\": {\n        \"pagina\": 1,\n    \
+        \    \"limite\": 20,\n        \"total registros\": 20,\n        \"paginas\"\
+        : 1\n    }\n}"
+      operationId: post_filter_logs_paginated
       parameters:
-      - description: DirecciÛn IP
-        in: query
-        name: ip
-        type: string
-      - description: Endpoint especÌfico
-        in: query
-        name: endpoint
-        type: string
-      - description: API especÌfica
-        in: query
-        name: api
-        type: string
-      - description: Email del usuario responsable
-        in: query
-        name: codigoResponsable
-        type: string
-      - description: MÈtodo HTTP (GET, POST, PUT, DELETE)
-        in: query
-        name: tipo_log
-        type: string
-      - default: 10
-        description: Registros por p·gina
-        in: query
-        name: limit
-        type: string
-      - default: 1
-        description: N˙mero de p·gina
-        in: query
-        name: page
-        type: string
-      - description: Hora de fin (HH:MM)
-        in: query
-        name: horaFin
+      - in: body
+        name: payload
         required: true
-        type: string
-      - description: Fecha de fin (YYYY-MM-DD)
-        in: query
-        name: fechaFin
-        required: true
-        type: string
-      - description: Hora de inicio (HH:MM)
-        in: query
-        name: horaInicio
-        required: true
-        type: string
-      - description: Fecha de inicio (YYYY-MM-DD)
-        in: query
-        name: fechaInicio
-        required: true
-        type: string
-      - description: Entorno (SANDBOX, PRODUCTION, TEST)
-        in: query
-        name: entornoApi
-        required: true
-        type: string
-      - description: 'Nombre del API (ej: polux_crud)'
-        in: query
-        name: nombreApi
-        required: true
-        type: string
+        schema:
+          $ref: '#/definitions/filtro_log_request'
       responses:
         '200':
           description: Success
@@ -159,7 +130,7 @@ paths:
           description: Not found
         '500':
           description: Server error
-      summary: Filtra y pagina logs de AWS con base en par·metros en la URL
+      summary: Filtra y pagina logs de AWS con base en par√°metros espec√≠ficos
       tags:
       - auditoria
 produces:
