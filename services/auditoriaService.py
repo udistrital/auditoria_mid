@@ -170,7 +170,7 @@ def get_processed_filtered_logs(params):
         if data_result["status"] == "Complete" and data_result["results"]:
             # Obtener total de registros
             total_registros = len(data_result["results"])
-            data = [log[1]["value"] for log in data_result["results"]]
+            data = [limpiar_caracteres_ansi(log[1]["value"]) for log in data_result["results"]]
             return procesamiento_respuesta(data,total_registros,page,limit)
         else:
             return no_logs_found(page,limit)
@@ -426,7 +426,7 @@ def procesar_logs(results):
                     extracted_data.get("metodo"), extracted_data.get("sql_orm")
                 ),
                 tipo_error="N/A",
-                mensaje_error=message,
+                mensaje_error=limpiar_caracteres_ansi(message),
             )
             eventos.append(log_obj)
         except Exception as e:
@@ -656,3 +656,12 @@ def extraer_error(log_string):
             )
 
     return tipo_error, mensaje_error
+
+def limpiar_caracteres_ansi(texto):
+    """
+    Función que elimina los códigos de escape ANSI de un texto
+    """
+    if not texto:
+        return texto
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    return ansi_escape.sub('', texto)
