@@ -23,14 +23,12 @@ REQUIRE_PARAMS = ["nombreApi","entornoApi","fechaInicio","horaInicio","fechaFin"
 
 client = boto3.client(
     "logs",
-    region_name="us-east-1",
+    region_name=os.environ.get("AWS_DEFAULT_REGION"),
     config=Config(
         retries={"max_attempts": 3, "mode": "adaptive"},
         connect_timeout=5,
         read_timeout=8,
-    ),
-    aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
-    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+    )
 )
 
 def validate_params(params):
