@@ -13,7 +13,7 @@ healthCheckController = Blueprint('healthCheckController', __name__, url_prefix=
 CORS(healthCheckController)
 
 @healthCheckController.route('/')
-def _():
+def health_check():
     return healthCheck.health_check(documentDoc)
 
 auditoriaController = Blueprint('auditoriaController', __name__)
@@ -25,7 +25,7 @@ documentNamespaceController = documentDoc.namespace("auditoria", description="Co
 auditoria_params=model_params.define_parameters(documentDoc)
 
 @documentNamespaceController.route('/', strict_slashes=False)
-class document_get_all(Resource):
+class DocumentGetAll(Resource):
     @documentDoc.doc(responses={
         200: 'Success',
         206: 'Partial Content',

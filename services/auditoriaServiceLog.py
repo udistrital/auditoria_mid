@@ -9,15 +9,19 @@ from models import respuesta_log
 import re
 import requests
 from pytz import timezone, utc
-from datetime import datetime, timedelta
+from datetime import datetime
 import time
+
+APPLICATION_JSON = 'application/json'
+ERROR_NO_USER = "Error WSO2 - Sin usuario"
+DEFAULT_LOG_GROUP = '/ecs/polux_crud_test'
 
 client = boto3.client(
     'logs',
     region_name='us-east-1'
 )
 
-def getAllLogs(params):
+def get_all_logs(params):
     """
         Consulta eventos de logs en CloudWatch para un grupo de logs específico en un rango de tiempo
         
@@ -31,7 +35,7 @@ def getAllLogs(params):
         json : lista de eventos de logs o información de errores
     """
     try:
-        log_group_name = params.get('log_group_name', '/ecs/polux_crud_test')
+        log_group_name = params.get('log_group_name', DEFAULT_LOG_GROUP)
         start_time = int(time.mktime(datetime(2024, 8, 1, 0, 0).timetuple()) * 1000)
         end_time = int(time.mktime(datetime(2024, 8, 2, 0, 0).timetuple()) * 1000)
 
@@ -44,56 +48,24 @@ def getAllLogs(params):
         events = [{"timestamp": event['timestamp'], "message": event['message']} for event in response.get('events', [])]
         
         if not events:
-            return Response(json.dumps({'Status': 'No logs found', 'Code': '404', 'Data': []}), status=404, mimetype='application/json')
+            return Response(json.dumps({'Status': 'No logs found', 'Code': '404', 'Data': []}), status=404, mimetype=APPLICATION_JSON)
         
-        return Response(json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': events}), status=200, mimetype='application/json')
+        return Response(json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': events}), status=200, mimetype=APPLICATION_JSON)
     
     except Exception as e:
-        return Response(json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}), status=500, mimetype='application/json')
+        return Response(json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}), status=500, mimetype=APPLICATION_JSON)
 
-def getOneLog(params):
+def get_one_log(params):
     """
-        Consulta un solo evento de logs en CloudWatch para un grupo de logs específico con filtros adicionales.
-
-        Parameters
-        ----------
-        params : MultiDict
-            Parámetros que incluyen:
-            - logGroupName (str): Nombre del grupo de logs.
-            - logStreamNames (list): Lista de streams dentro del grupo de logs.
-            - startTime (str): Tiempo de inicio (formato: 'YYYY-MM-DD HH:MM').
-            - endTime (str): Tiempo de fin (formato: 'YYYY-MM-DD HH:MM').
-            - filterPattern (str): Patrón para filtrar los logs.
-            - limit (int): Límite de eventos a devolver.
-
-        Returns
-        -------
-        json : Evento de log o información de error.
+    Consulta un solo evento de logs en CloudWatch para un grupo de logs específico con filtros adicionales.
     """
     try:
-        entornoApi = ''
-
-        filtroBusqueda=params["filterPattern"]
-        filtroEmailUser=params["emailUser"]
+        entorno_api = ''
+        filtro_busqueda = params["filterPattern"]
+        filtro_email_user = params["emailUser"]
         query_string = ""
 
-        if filtroBusqueda and filtroEmailUser:
-            query_string = """
-            fields @timestamp, @message
-            | filter @message like /{}/ 
-            and @message like /middleware/ 
-            and @message like /{}/
-            | sort @timestamp desc
-            """.format(filtroBusqueda, filtroEmailUser)
-        elif filtroBusqueda:
-            query_string = """
-            fields @timestamp, @message
-            | filter @message like /{}/ 
-            and @message like /middleware/
-            | sort @timestamp desc
-            """.format(filtroBusqueda)
-        else:
-            raise ValueError("El parámetro del método HTTP o el correo del usuario son obligatorios.")
+        query_string = build_query_string(filtro_busqueda, filtro_email_user)
         
         local_tz = timezone('America/Bogota')  
         utc_tz = utc
@@ -107,85 +79,122 @@ def getOneLog(params):
         start_time = int(utc_start_time.timestamp())
         end_time = int(utc_end_time.timestamp())
 
-        if params['environmentApi'] == 'PRODUCTION':
-            entornoApi = 'prod'
-        else:
-            entornoApi = 'test'
+        entorno_api = 'prod' if params['environmentApi'] == 'PRODUCTION' else 'test'
 
         response = client.start_query(
-            logGroupName = f"/ecs/{params['logGroupName']}_{entornoApi}",
+            logGroupName=f"/ecs/{params['logGroupName']}_{entorno_api}",
             startTime=start_time,
             endTime=end_time,
             queryString=query_string
         )
         query_id = response['queryId']
 
-        while True:
-            result = client.get_query_results(queryId=query_id)
-            if result['status'] in ['Complete', 'Failed', 'Cancelled']:
-                break
-            time.sleep(1)
+        result = wait_for_query_completion(query_id)
 
-        if result['status'] == 'Complete' and result['results']:
-            events = []
-            for log in result['results']:
-                timestamp = next(item['value'] for item in log if item['field'] == '@timestamp')
-                message = next(item['value'] for item in log if item['field'] == '@message')
-
-                extracted_data = extract_log_data(message)
-                fechaConvertida = ""
-                usuarioLog = ""
-                rolUsuarioBuscado = ""
-
-                try:
-                    fechaConvertida = datetime.strptime(extracted_data.get("fecha"), "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d %H:%M:%S")
-                except Exception as e:
-                    fechaConvertida = ""
-
-                usuarioSinEspacio = extracted_data.get("usuario", "").strip()
-                if usuarioSinEspacio not in ["N/A", "Error", "Error WSO2", "Error WSO2 - Sin usuario", ""]:
-                    usuarioLog = f"{usuarioSinEspacio}@udistrital.edu.co"
-                else:
-                    usuarioLog = "Error WSO2 - Sin usuario"
-
-                if usuarioLog not in ["Error WSO2 - Sin usuario"]:
-                    rolUsuarioBuscado = buscar_user_rol(usuarioLog)
-                else:
-                    rolUsuarioBuscado = "Rol no encontrado"
-                tipo_error, mensaje_error = extraer_error(message)
-                log_obj = respuesta_log.RespuestaLog(
-                    tipoLog=extracted_data.get("tipoLog"),
-                    fecha=fechaConvertida,
-                    rolResponsable=usuarioLog,
-                    nombreResponsable="N/A",
-                    documentoResponsable="N/A",
-                    direccionAccion=extracted_data.get("direccionAccion", "N/A"),
-                    rol=rolUsuarioBuscado,
-                    apisConsumen=extracted_data.get("apiConsumen", "N/A"),
-                    peticionRealizada=extract_log_json(extracted_data.get("endpoint"),extracted_data.get("api"),extracted_data.get("metodo"),usuarioLog,extracted_data.get("data")),
-                    eventoBD=reemplazar_valores_log(extracted_data.get("metodo"),extracted_data.get("sql_orm")),
-                    tipoError=tipo_error,
-                    mensajeError=mensaje_error
-                )
-                events.append(log_obj)
-            return Response(
-                json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': [vars(log) for log in events]}),
-                status=200,
-                mimetype='application/json'
-            )
-        return Response(
-            json.dumps({'Status': 'No logs found or query failed', 'Code': '404', 'Data': []}),
-            status=404,
-            mimetype='application/json'
-        )
+        return process_query_results(result)
 
     except Exception as e:
         return Response(
             json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}),
             status=500,
-            mimetype='application/json'
+            mimetype=APPLICATION_JSON
         )
+
+def build_query_string(filtro_busqueda, filtro_email_user):
+    """Construye la cadena de consulta para CloudWatch"""
+    if not filtro_busqueda and not filtro_email_user:
+        raise ValueError("El parámetro del método HTTP o el correo del usuario son obligatorios.")
     
+    base_query = """
+    fields @timestamp, @message
+    | filter @message like /{}/ 
+    and @message like /middleware/
+    """
+    
+    if filtro_email_user:
+        base_query += "and @message like /{}/\n"
+        return base_query.format(filtro_busqueda, filtro_email_user)
+    
+    return base_query.format(filtro_busqueda) + "| sort @timestamp desc"
+
+def wait_for_query_completion(query_id):
+    """Espera a que la consulta de CloudWatch se complete"""
+    while True:
+        result = client.get_query_results(queryId=query_id)
+        if result['status'] in ['Complete', 'Failed', 'Cancelled']:
+            return result
+        time.sleep(1)
+
+def process_query_results(result):
+    """Procesa los resultados de la consulta de CloudWatch"""
+    if result['status'] != 'Complete' or not result['results']:
+        return Response(
+            json.dumps({'Status': 'No logs found or query failed', 'Code': '404', 'Data': []}),
+            status=404,
+            mimetype=APPLICATION_JSON
+        )
+
+    events = []
+    for log in result['results']:
+        message = next(item['value'] for item in log if item['field'] == '@message')
+        extracted_data = extract_log_data(message)
+        
+        fecha_convertida = convert_date(extracted_data.get("fecha"))
+        usuario_log = process_user(extracted_data.get("usuario", "").strip())
+        rol_usuario = get_user_role(usuario_log)
+        
+        tipo_error, mensaje_error = extraer_error(message)
+        log_obj = create_log_object(extracted_data, fecha_convertida, usuario_log, rol_usuario, tipo_error, mensaje_error)
+        events.append(log_obj)
+    
+    return Response(
+        json.dumps({'Status': 'Successful request', 'Code': '200', 'Data': [vars(log) for log in events]}),
+        status=200,
+        mimetype=APPLICATION_JSON
+    )
+
+def convert_date(date_str):
+    """Convierte una cadena de fecha al formato deseado"""
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return ""
+
+def process_user(usuario):
+    """Procesa el nombre de usuario del log"""
+    if usuario not in ["N/A", "Error", "Error WSO2", ERROR_NO_USER, ""]:
+        return f"{usuario}@udistrital.edu.co"
+    return ERROR_NO_USER
+
+def get_user_role(usuario_log):
+    """Obtiene el rol del usuario"""
+    if usuario_log != ERROR_NO_USER:
+        return buscar_user_rol(usuario_log)
+    return "Rol no encontrado"
+
+def create_log_object(extracted_data, fecha_convertida, usuario_log, rol_usuario, tipo_error, mensaje_error):
+    """Crea un objeto de log estructurado"""
+    return respuesta_log.RespuestaLog(
+        tipoLog=extracted_data.get("tipoLog"),
+        fecha=fecha_convertida,
+        rolResponsable=usuario_log,
+        nombreResponsable="N/A",
+        documentoResponsable="N/A",
+        direccionAccion=extracted_data.get("direccionAccion", "N/A"),
+        rol=rol_usuario,
+        apisConsumen=extracted_data.get("apiConsumen", "N/A"),
+        peticionRealizada=extract_log_json(
+            extracted_data.get("endpoint"),
+            extracted_data.get("api"),
+            extracted_data.get("metodo"),
+            usuario_log,
+            extracted_data.get("data")
+        ),
+        eventoBD=reemplazar_valores_log(extracted_data.get("metodo"), extracted_data.get("sql_orm")),
+        tipoError=tipo_error,
+        mensajeError=mensaje_error
+    )
+
 def extraer_error(log_string):
     """
     Procesa una cadena de log y retorna tipoError y mensajeError.

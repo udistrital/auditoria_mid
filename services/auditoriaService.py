@@ -14,6 +14,8 @@ from threading import Thread
 from threading import Event
 
 MIME_TYPE_JSON = "application/json"
+STATUS_BAD_REQUEST = "Bad Request"
+STATUS_SUCCESS = "Successful request"
 PATRON = r"\[(.*?)\] - (.+)"
 ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
 USUARIO_NO_REGISTRADO = "Usuario no registrado"
@@ -39,7 +41,7 @@ def validate_params(params):
             return Response(
                 json.dumps(
                     {
-                        "Status": "Bad Request",
+                        "Status": STATUS_BAD_REQUEST,
                         "Code": "400",
                         "Error": f"Falta el parámetro requerido: {param}",
                     }
@@ -74,7 +76,7 @@ def procesamiento_respuesta(data,total_registros,page,limit):
     return Response(
             json.dumps(
                 {
-                    "Status": "Successful request",
+                    "Status": STATUS_SUCCESS,
                     "Code": "200",
                     "Data": data,
                     "Pagination": {
@@ -111,7 +113,7 @@ def bad_request(e):
     return Response(
         json.dumps(
             {
-                "Status": "Bad Request",
+                "Status": STATUS_BAD_REQUEST,
                 "Code": "400",
                 "Error": f"Parámetros inválidos: {str(e)}",
             }

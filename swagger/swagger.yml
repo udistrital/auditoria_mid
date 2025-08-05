@@ -31,7 +31,7 @@ definitions:
     - tipo_log
     type: object
 info:
-  description: Api mid para la obtención de logs de AWS
+  description: Api mid para la obtenciï¿½n de logs de AWS
   title: auditoria_mid
   version: '1.0'
 paths:
@@ -61,7 +61,7 @@ paths:
         \ (str): Hora de inicio en formato hh:mm\n    - fechaFin (str): Fecha de fin\
         \ en formato aaaa-mm-dd\n    - horaFin (str): Hora de fin en formato hh:mm\n\
         \    - tipo_log (str): Tipo de log (GET, POST, PUT, etc.)\n    - codigoResponsable\
-        \ (int): Código del responsable\n    - rolResponsable (str): Rol del responsable\n\
+        \ (int): Cï¿½digo del responsable\n    - rolResponsable (str): Rol del responsable\n\
         \nReturns\n-------\nResponse\n    Respuesta con los logs filtrados en formato\
         \ JSON."
       operationId: post_filter_logs
@@ -82,23 +82,23 @@ paths:
           description: Not found
         '500':
           description: Server error
-      summary: Filtra los logs de AWS con base en parámetros específicos
+      summary: Filtra los logs de AWS con base en parï¿½metros especï¿½ficos
       tags:
       - auditoria
   /auditoria/buscarLogsFiltrados:
     get:
-      description: Permite búsqueda incremental con paginación para mejor performance.
+      description: Permite bï¿½squeda incremental con paginaciï¿½n para mejor performance.
       operationId: get_filter_logs_paginated
       parameters:
-      - description: Dirección IP
+      - description: Direcciï¿½n IP
         in: query
         name: ip
         type: string
-      - description: Endpoint específico
+      - description: Endpoint especï¿½fico
         in: query
         name: endpoint
         type: string
-      - description: API específica
+      - description: API especï¿½fica
         in: query
         name: api
         type: string
@@ -106,17 +106,17 @@ paths:
         in: query
         name: codigoResponsable
         type: string
-      - description: Método HTTP (GET, POST, PUT, DELETE)
+      - description: Mï¿½todo HTTP (GET, POST, PUT, DELETE)
         in: query
         name: tipo_log
         type: string
       - default: 10
-        description: Registros por página
+        description: Registros por pï¿½gina
         in: query
         name: limit
         type: string
       - default: 1
-        description: Número de página
+        description: Nï¿½mero de pï¿½gina
         in: query
         name: page
         type: string
@@ -159,7 +159,7 @@ paths:
           description: Not found
         '500':
           description: Server error
-      summary: Filtra y pagina logs de AWS con base en parámetros en la URL
+      summary: Filtra y pagina logs de AWS con base en parï¿½metros en la URL
       tags:
       - auditoria
 produces:

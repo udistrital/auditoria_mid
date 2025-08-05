@@ -10,6 +10,12 @@ conf.check_env()
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
+# Justificación para deshabilitar CSRF:
+# Este servicio actúa como una API RESTful y no sirve contenido HTML con formularios.
+# Todas las solicitudes se esperan con JSON y requieren autenticación por token (JWT).
+# CSRF no aplica a APIs RESTful que usan Authorization: Bearer tokens, ya que los navegadores no incluyen estos tokens automáticamente.
+# Ver OWASP REST Security Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html#csrf-considerations
+# Por lo tanto, CSRF se deshabilita de forma explícita y consciente.
 router.add_routing(app)
 error.add_error_handler(app)
 
