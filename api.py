@@ -9,7 +9,20 @@ import logging
 conf.check_env()
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+cors_config = {
+    "resources": {
+        r"/v1/*": {
+            "origins": os.getenv('ALLOWED_ORIGINS', 'http://localhost:4200,https://*.udistrital.edu.co').split(','),
+            "methods": ["GET", "POST", "OPTIONS"],
+            "allow_headers": ["Authorization", "Content-Type"],
+            "expose_headers": ["X-Total-Count"],
+            "max_age": 600,
+            "supports_credentials": False
+        }
+    }
+}
+
+CORS(app, **cors_config)
 # Justificación para deshabilitar CSRF:
 # Este servicio actúa como una API RESTful y no sirve contenido HTML con formularios.
 # Todas las solicitudes se esperan con JSON y requieren autenticación por token (JWT).
