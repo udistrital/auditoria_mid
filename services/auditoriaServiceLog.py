@@ -293,7 +293,7 @@ def extract_log_json(endpoint,api,metodo,usuario,data_json):
     data["api"] = api
     data["metodo"] = metodo
     data["usuario"] = usuario
-    data["data"] = dataJson
+    data["data"] = data_json
     json_result = json.dumps(data, indent=4)
     return json_result
 
