@@ -17,7 +17,7 @@ from functools import wraps
 MIME_TYPE_JSON = "application/json"
 STATUS_BAD_REQUEST = "Bad Request"
 STATUS_SUCCESS = "Successful request"
-PATRON = re.compile(r"\[(.*?)\] - (.+)", re.UNICODE)
+PATRON = re.compile(r"\[(.*?)\] - (.+)")
 # Expresión regular precompilada para mejor rendimiento
 ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
@@ -27,19 +27,9 @@ LIMIT = 10000
 REQUIRE_PARAMS = ["nombreApi","entornoApi","fechaInicio","horaInicio","fechaFin","horaFin",]
 # Tiempo máximo de ejecución para regex (en segundos)
 REGEX_TIMEOUT = 2  # Ajusta según necesidades
-MAX_TEXT_LENGTH = 10_000  # Longitud máxima de texto para evitar DoS
+MAX_TEXT_LENGTH = 10000  # Longitud máxima de texto para evitar DoS
 
-def safe_regex(timeout):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            start_time = time.time()
-            result = func(*args, **kwargs)
-            if time.time() - start_time > timeout:
-                raise ValueError("Regex operation timed out")
-            return result
-        return wrapper
-    return decorator
+
 client = boto3.client(
     "logs",
     region_name="us-east-1",
@@ -220,7 +210,7 @@ def get_filtered_logs(params):
         start_time, end_time = convertir_tiempo_a_utc(
             f"{params['fechaInicio']} {params['horaInicio']}",
             f"{params['fechaFin']} {params['horaFin']}"
-        )#formato_rango_fecha(params)
+        )
 
         # 1. Obtener datos paginados
         data_query = construir_data_query(params, offset, limit)
@@ -273,6 +263,77 @@ def convertir_tiempo_a_utc(start_str, end_str, timezone_str="America/Bogota"):
     )
 
 def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
+    """
+    Lanza una consulta a CloudWatch Logs Insights con timeout de 60 segundos.
+    Muestra contador en tiempo real y se detiene exactamente al llegar al límite.
+    """
+    def print_timer(stop_event, start_time, timeout):
+        """Hilo que imprime el tiempo y verifica timeout"""
+        while not stop_event.is_set():
+            elapsed = time.time() - start_time
+            if elapsed >= timeout:
+                stop_event.set()
+                break
+            time.sleep(0.1)
+
+    def should_stop_processing(result):
+        """Determina si el procesamiento debe detenerse"""
+        is_complete = result.get("status") in ["Complete", "Failed", "Cancelled"]
+        has_max_results = isinstance(result, dict) and len(result.get('results', [])) >= 10000
+        return is_complete or has_max_results
+
+    def start_query_thread(stop_event, start_total_time, timeout):
+        """Inicia el hilo del timer"""
+        timer_thread = Thread(target=print_timer, args=(stop_event, start_total_time, timeout))
+        timer_thread.daemon = True
+        timer_thread.start()
+        return timer_thread
+
+    def execute_cloudwatch_query():
+        """Ejecuta la consulta a CloudWatch"""
+        return client.start_query(
+            logGroupName=log_group,
+            startTime=start_time,
+            endTime=end_time,
+            queryString=query_string,
+        )
+
+    def process_query_results(query_id, stop_event):
+        """Obtiene y procesa los resultados de la consulta"""
+        result = []
+        while not stop_event.is_set():
+            result = client.get_query_results(queryId=query_id)
+            if should_stop_processing(result):
+                stop_event.set()
+                break
+            time.sleep(2)
+        return result
+
+    try:
+        timeout = 60
+        stop_event = Event()
+        start_total_time = time.time()
+
+        timer_thread = start_query_thread(stop_event, start_total_time, timeout)
+        response = execute_cloudwatch_query()
+        query_id = response["queryId"]
+        result = process_query_results(query_id, stop_event)
+
+        if isinstance(result, dict):
+            result["status"] = "Complete" if result.get("status") != "Failed" else "Failed"
+
+        return result
+
+    except Exception as e:
+        stop_event.set()
+        print(f"\nError en la consulta: {str(e)}")
+        raise
+    finally:
+        stop_event.set()
+        if 'timer_thread' in locals():
+            timer_thread.join(timeout=1)
+
+def ejecutar_query_cloudwatch2(query_string, log_group, start_time, end_time):
     """
     Lanza una consulta a CloudWatch Logs Insights con timeout de 60 segundos.
     Muestra contador en tiempo real y se detiene exactamente al llegar al límite.
@@ -590,6 +651,52 @@ def reemplazar_valores_log(metodo, log):
     Returns:
         str: Consulta SQL con los valores reemplazados.
     """
+    MAX_LOG_LENGTH = 10000
+    
+    if len(log) > MAX_LOG_LENGTH:
+        raise ValueError("El log es demasiado largo para procesar")
+
+    metodo = metodo.upper()
+    
+    if metodo not in ["POST", "PUT", "GET", "DELETE"]:
+        return None
+    try:
+        match = re.search(PATRON, log)
+        if not match:
+            return _format_error_message(metodo, log)
+        consulta = match.group(1)
+        valores = _extract_values(metodo, match.group(2))
+        return _replace_placeholders(consulta, valores)
+    except re.error:
+        return f"Error al procesar el log {metodo} con expresión regular"
+
+def _extract_values(metodo, values_str):
+    """Extrae valores según el método HTTP"""
+    if metodo == "POST":
+        return values_str.split(", ")
+    else:  # PUT, GET, DELETE
+        return re.findall(r"`([^`]*)`", values_str)
+
+def _replace_placeholders(consulta, valores):
+    """Reemplaza placeholders ($1, $2, etc.) con valores reales"""
+    for i, valor in enumerate(valores, start=1):
+        consulta = consulta.replace(f"${i}", valor.strip())
+    return consulta
+
+def _format_error_message(metodo, log):
+    """Formatea mensaje de error para logs inválidos"""
+    return f"El formato del log {metodo} no es válido: {log}"
+
+def reemplazar_valores_log1(metodo, log):
+    """
+    Procesa un log, extrae los valores de una consulta SQL y los reemplaza en su lugar correspondiente.
+
+    Args:
+        log (str): Parte del log con la consulta SQL y los valores a reemplazar.
+
+    Returns:
+        str: Consulta SQL con los valores reemplazados.
+    """
     # Limitar la longitud de la entrada para prevenir DoS
     MAX_LOG_LENGTH = 10000  # Ajusta según necesidades
     if len(log) > MAX_LOG_LENGTH:
@@ -679,15 +786,10 @@ def limpiar_caracteres_ansi(texto):
     if not texto:
         return texto
 
-    # Verificar longitud máxima
     if len(texto) > MAX_TEXT_LENGTH:
         raise ValueError(f"El texto excede la longitud máxima permitida ({MAX_TEXT_LENGTH} caracteres)")
+    
     try:
-        # Python 3.11+ permite timeout en regex
-        if hasattr(re, 'Pattern') and hasattr(ANSI_ESCAPE, 'sub'):
-            return ANSI_ESCAPE.sub('', texto, timeout=1.0)  # Timeout de 1 segundo
-        else:
-            return ANSI_ESCAPE.sub('', texto)
-    except (re.error, TimeoutError):
-        # En caso de error, retornar el texto sin modificar (o podrías lanzar una excepción)
+        return ANSI_ESCAPE.sub('', texto)  # Sin parámetro timeout
+    except re.error:
         return texto
