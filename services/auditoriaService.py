@@ -333,69 +333,6 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
         if 'timer_thread' in locals():
             timer_thread.join(timeout=1)
 
-def ejecutar_query_cloudwatch2(query_string, log_group, start_time, end_time):
-    """
-    Lanza una consulta a CloudWatch Logs Insights con timeout de 60 segundos.
-    Muestra contador en tiempo real y se detiene exactamente al llegar al límite.
-    """
-    def print_timer(stop_event, start_time, timeout):
-        """Hilo que imprime el tiempo y verifica timeout"""
-        while not stop_event.is_set():
-            elapsed = time.time() - start_time
-            if elapsed >= timeout:
-                stop_event.set()
-                break
-            time.sleep(0.1)
-
-    def should_stop_processing(result, stop_event):
-        """Determina si el procesamiento debe detenerse"""
-        if isinstance(result, dict) and len(result.get('results', [])) >= 10000:
-            return True
-        if result.get("status") in ["Complete", "Failed", "Cancelled"]:
-            return True
-        return False
-
-    try:
-        timeout = 60
-        stop_event = Event()
-        start_total_time = time.time()
-
-        timer_thread = Thread(target=print_timer, args=(stop_event, start_total_time, timeout))
-        timer_thread.daemon = True
-        timer_thread.start()
-
-        response = client.start_query(
-            logGroupName=log_group,
-            startTime=start_time,
-            endTime=end_time,
-            queryString=query_string,
-        )
-        query_id = response["queryId"]
-
-        result = []
-        while not stop_event.is_set():
-            result = client.get_query_results(queryId=query_id)
-            
-            if should_stop_processing(result, stop_event):
-                stop_event.set()
-                break
-
-            time.sleep(2)
-
-        if isinstance(result, dict):
-            result["status"] = "Complete" if result.get("status") != "Failed" else "Failed"
-
-        return result
-
-    except Exception as e:
-        stop_event.set()
-        print(f"\nError en la consulta: {str(e)}")
-        raise
-    finally:
-        stop_event.set()
-        if 'timer_thread' in locals():
-            timer_thread.join(timeout=1)
-
 def construir_data_query(params, page, limit):
     """Construye y loguea la query de datos con paginación adecuada"""
     filtro_busqueda = re.escape(params["filterPattern"])
@@ -686,51 +623,6 @@ def _replace_placeholders(consulta, valores):
 def _format_error_message(metodo, log):
     """Formatea mensaje de error para logs inválidos"""
     return f"El formato del log {metodo} no es válido: {log}"
-
-def reemplazar_valores_log1(metodo, log):
-    """
-    Procesa un log, extrae los valores de una consulta SQL y los reemplaza en su lugar correspondiente.
-
-    Args:
-        log (str): Parte del log con la consulta SQL y los valores a reemplazar.
-
-    Returns:
-        str: Consulta SQL con los valores reemplazados.
-    """
-    # Limitar la longitud de la entrada para prevenir DoS
-    MAX_LOG_LENGTH = 10000  # Ajusta según necesidades
-    if len(log) > MAX_LOG_LENGTH:
-        raise ValueError("El log es demasiado largo para procesar")
-    
-    if metodo.upper() == "POST":
-        match = re.search(PATRON, log)
-        if match:
-            consulta = match.group(1)
-            valores = match.group(2).split(", ")
-
-            for i, valor in enumerate(valores, start=1):
-                consulta = consulta.replace(f"${i}", valor.strip())
-
-            return consulta
-        else:
-            return "El formato del log POST no es válido: " + log
-
-    elif metodo.upper() in ["PUT", "GET", "DELETE"]:
-        try:
-            match = re.search(PATRON, log)
-            if match:
-                consulta = match.group(1)
-                valores = re.findall(r"`([^`]*)`", match.group(2))
-
-                for i, valor in enumerate(valores, start=1):
-                    consulta = consulta.replace(f"${i}", valor.strip())
-                return consulta
-            else:
-                return f"El formato del log {metodo.upper()} no es válido: {log}"
-        except re.error:
-            return f"Error al procesar el log {metodo.upper()} con expresión regular"
-    else:
-        return
 
 def extraer_error(log_string):
     """
