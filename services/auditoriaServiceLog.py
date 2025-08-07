@@ -287,7 +287,7 @@ def extract_log_data(log_entry):
 
     return extracted_data
 
-def extract_log_json(endpoint,api,metodo,usuario,dataJson):
+def extract_log_json(endpoint,api,metodo,usuario,data_json):
     data = {}
     data["endpoint"] = endpoint
     data["api"] = api

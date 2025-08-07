@@ -12,17 +12,34 @@ from botocore.config import Config
 import time
 from threading import Thread
 from threading import Event
+from functools import wraps
 
 MIME_TYPE_JSON = "application/json"
 STATUS_BAD_REQUEST = "Bad Request"
 STATUS_SUCCESS = "Successful request"
-PATRON = r"\[(.*?)\] - (.+)"
+PATRON = re.compile(r"\[(.*?)\] - (.+)", re.UNICODE)
+# Expresión regular precompilada para mejor rendimiento
+ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
 USUARIO_NO_REGISTRADO = "Usuario no registrado"
 NOMBRE_NO_ENCONTRADO = "Nombre no encontrado"
 LIMIT = 10000
 REQUIRE_PARAMS = ["nombreApi","entornoApi","fechaInicio","horaInicio","fechaFin","horaFin",]
+# Tiempo máximo de ejecución para regex (en segundos)
+REGEX_TIMEOUT = 2  # Ajusta según necesidades
+MAX_TEXT_LENGTH = 10_000  # Longitud máxima de texto para evitar DoS
 
+def safe_regex(timeout):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start_time = time.time()
+            result = func(*args, **kwargs)
+            if time.time() - start_time > timeout:
+                raise ValueError("Regex operation timed out")
+            return result
+        return wrapper
+    return decorator
 client = boto3.client(
     "logs",
     region_name="us-east-1",
@@ -573,6 +590,11 @@ def reemplazar_valores_log(metodo, log):
     Returns:
         str: Consulta SQL con los valores reemplazados.
     """
+    # Limitar la longitud de la entrada para prevenir DoS
+    MAX_LOG_LENGTH = 10000  # Ajusta según necesidades
+    if len(log) > MAX_LOG_LENGTH:
+        raise ValueError("El log es demasiado largo para procesar")
+    
     if metodo.upper() == "POST":
         match = re.search(PATRON, log)
         if match:
@@ -587,16 +609,19 @@ def reemplazar_valores_log(metodo, log):
             return "El formato del log POST no es válido: " + log
 
     elif metodo.upper() in ["PUT", "GET", "DELETE"]:
-        match = re.search(PATRON, log)
-        if match:
-            consulta = match.group(1)
-            valores = re.findall(r"`([^`]*)`", match.group(2))
+        try:
+            match = re.search(PATRON, log)
+            if match:
+                consulta = match.group(1)
+                valores = re.findall(r"`([^`]*)`", match.group(2))
 
-            for i, valor in enumerate(valores, start=1):
-                consulta = consulta.replace(f"${i}", valor.strip())
-            return consulta
-        else:
-            return f"El formato del log {metodo.upper()} no es válido: {log}"
+                for i, valor in enumerate(valores, start=1):
+                    consulta = consulta.replace(f"${i}", valor.strip())
+                return consulta
+            else:
+                return f"El formato del log {metodo.upper()} no es válido: {log}"
+        except re.error:
+            return f"Error al procesar el log {metodo.upper()} con expresión regular"
     else:
         return
 
@@ -653,5 +678,16 @@ def limpiar_caracteres_ansi(texto):
     """
     if not texto:
         return texto
-    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-    return ansi_escape.sub('', texto)
+
+    # Verificar longitud máxima
+    if len(texto) > MAX_TEXT_LENGTH:
+        raise ValueError(f"El texto excede la longitud máxima permitida ({MAX_TEXT_LENGTH} caracteres)")
+    try:
+        # Python 3.11+ permite timeout en regex
+        if hasattr(re, 'Pattern') and hasattr(ANSI_ESCAPE, 'sub'):
+            return ANSI_ESCAPE.sub('', texto, timeout=1.0)  # Timeout de 1 segundo
+        else:
+            return ANSI_ESCAPE.sub('', texto)
+    except (re.error, TimeoutError):
+        # En caso de error, retornar el texto sin modificar (o podrías lanzar una excepción)
+        return texto
