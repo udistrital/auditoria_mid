@@ -9,10 +9,20 @@ import logging
 conf.check_env()
 
 app = Flask(__name__)
+def get_allowed_origins():
+    env = os.getenv('ENV', 'DEV').upper()  # Por defecto asumimos desarrollo
+
+    if env == 'PROD':
+        # Configuración para producción - solo HTTPS
+        return ['https://*.udistrital.edu.co', 'https://udistrital.edu.co']
+    else:
+        # Configuración para desarrollo - permite HTTP local
+        return ['http://localhost:4200', 'http://127.0.0.1:4200']
+
 cors_config = {
     "resources": {
         r"/v1/*": {
-            "origins": os.getenv('ALLOWED_ORIGINS', 'http://localhost:4200,https://*.udistrital.edu.co').split(','),
+            "origins": get_allowed_origins(),
             "methods": ["GET", "POST", "OPTIONS"],
             "allow_headers": ["Authorization", "Content-Type"],
             "expose_headers": ["X-Total-Count"],
