@@ -9,15 +9,30 @@ def add_routing(app):
     app.register_blueprint(healthCheckController)
     app.register_blueprint(auditoriaController, url_prefix='/v1')
 
+health_check_cors_config = {
+    'origins': api_cors_config['origins'],  # Usar los orígenes configurados
+    'methods': ['GET'],  # Solo permitir métodos necesarios
+    'allow_headers': ['Content-Type'],
+    'supports_credentials': False  # Solo habilitar si es necesario
+}
+
+auditoria_cors_config = {
+    'origins': api_cors_config['origins'],
+    'methods': ['GET', 'POST', 'OPTIONS'],  # Solo métodos necesarios
+    'allow_headers': ['Content-Type', 'Authorization'],
+    'max_age': 600,  # Tiempo de cache para preflight requests
+    'supports_credentials': False
+}
+
 healthCheckController = Blueprint('healthCheckController', __name__, url_prefix='/v1')
-CORS(healthCheckController)
+CORS(healthCheckController, **health_check_cors_config)
 
 @healthCheckController.route('/')
 def health_check():
     return healthCheck.health_check(documentDoc)
 
 auditoriaController = Blueprint('auditoriaController', __name__)
-CORS(auditoriaController)
+CORS(auditoriaController, **auditoria_cors_config)
 
 documentDoc = Api(auditoriaController, version='1.0', title='auditoria_mid', description='Api mid para la obtención de logs de AWS', doc="/swagger")
 documentNamespaceController = documentDoc.namespace("auditoria", description="Consulta logs de AWS")
