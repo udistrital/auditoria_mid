@@ -1,5 +1,6 @@
 setuptools >= 30.3.0
 requests >= 2.12.2
+regex==2025.7.34
 packaging
 Flask
 flask-restx

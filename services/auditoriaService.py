@@ -5,6 +5,7 @@ from datetime import datetime
 from flask import Response
 from models import respuesta_log
 import re
+import regex
 import requests
 from pytz import timezone, utc
 from datetime import datetime
@@ -17,9 +18,8 @@ from functools import wraps
 MIME_TYPE_JSON = "application/json"
 STATUS_BAD_REQUEST = "Bad Request"
 STATUS_SUCCESS = "Successful request"
-PATRON = re.compile(r"\[(.*?)\] - (.+)")
-# Expresión regular precompilada para mejor rendimiento
-ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+PATRON = regex.compile(r"\[([^\]]*)\] - ([^\n]+)")  # Más específica y segura
+ANSI_ESCAPE = regex.compile(r'\x1B[@-Z\\-_]|\x1B\[[0-?]*[ -/]*[@-~]')  # Optimizada
 ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
 USUARIO_NO_REGISTRADO = "Usuario no registrado"
 NOMBRE_NO_ENCONTRADO = "Nombre no encontrado"
