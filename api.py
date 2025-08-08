@@ -10,7 +10,8 @@ conf.check_env()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
-csrf = CSRFProtect(app)
+csrf = CSRFProtect()
+csrf.init_app(app)
 def get_allowed_origins():
     env = os.getenv('ENV', 'DEV').upper()  # Por defecto asumimos desarrollo
 
