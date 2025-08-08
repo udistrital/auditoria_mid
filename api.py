@@ -5,10 +5,12 @@ from flask_cors import CORS
 from conf import conf
 from routers import router
 from controllers import error
-import logging
+from flask_wtf.csrf import CSRFProtect
 conf.check_env()
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
+csrf = CSRFProtect(app)
 def get_allowed_origins():
     env = os.getenv('ENV', 'DEV').upper()  # Por defecto asumimos desarrollo
 

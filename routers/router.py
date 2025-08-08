@@ -4,6 +4,7 @@ from controllers import auditoria, healthCheck
 from flask_cors import CORS, cross_origin
 from conf.conf import api_cors_config
 from models import model_params
+from api import csrf
 
 def add_routing(app):
     app.register_blueprint(healthCheckController)
@@ -67,6 +68,7 @@ class DocumentGetAll(Resource):
 
 
 @documentNamespaceController.route('/buscarLog', strict_slashes=False)
+@csrf.exempt
 class FilterLogs(Resource):
     @documentDoc.doc(responses={
         200: 'Success',
@@ -102,6 +104,7 @@ class FilterLogs(Resource):
         return auditoria.post_buscar_log(params)
 
 @documentNamespaceController.route('/buscarLogsFiltrados', strict_slashes=False)
+@csrf.exempt
 class FilterLogsPaginated(Resource):
     @documentDoc.doc(responses={
         200: 'Success',
