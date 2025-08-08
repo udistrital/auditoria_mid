@@ -66,9 +66,7 @@ class DocumentGetAll(Resource):
         params = request.args  
         return auditoria.get_all(params)
 
-
 @documentNamespaceController.route('/buscarLog', strict_slashes=False)
-@csrf.exempt
 class FilterLogs(Resource):
     @documentDoc.doc(responses={
         200: 'Success',
@@ -104,7 +102,6 @@ class FilterLogs(Resource):
         return auditoria.post_buscar_log(params)
 
 @documentNamespaceController.route('/buscarLogsFiltrados', strict_slashes=False)
-@csrf.exempt
 class FilterLogsPaginated(Resource):
     @documentDoc.doc(responses={
         200: 'Success',
