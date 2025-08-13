@@ -4,7 +4,7 @@ from controllers import auditoria, healthCheck
 from flask_cors import CORS, cross_origin
 from conf.conf import api_cors_config
 from models import model_params
-from api import csrf
+from security import csrf, generate_csrf
 
 def add_routing(app):
     app.register_blueprint(healthCheckController)
@@ -20,9 +20,9 @@ health_check_cors_config = {
 auditoria_cors_config = {
     'origins': api_cors_config['origins'],
     'methods': ['GET', 'POST', 'OPTIONS'],  # Solo métodos necesarios
-    'allow_headers': ['Content-Type', 'Authorization'],
+    'allow_headers': ['Content-Type', 'Authorization', "X-Total-Count", 'X-XSRF-TOKEN'],
     'max_age': 600,  # Tiempo de cache para preflight requests
-    'supports_credentials': False
+    'supports_credentials': True
 }
 
 healthCheckController = Blueprint('healthCheckController', __name__, url_prefix='/v1')
@@ -75,7 +75,7 @@ class FilterLogs(Resource):
         404: 'Not found',
         500: 'Server error'
     }, body=auditoria_params['filtro_log_model'])  
-    @documentNamespaceController.expect(auditoria_params['filtro_log_model'])  
+    @documentNamespaceController.expect(auditoria_params['filtro_log_model'])
     @cross_origin(**api_cors_config)
     def post(self):
         """
@@ -182,3 +182,7 @@ class FilterLogsPaginated(Resource):
         """
         params = request.json
         return auditoria.get_logs_filtrados(params)
+
+@healthCheckController.route("/csrf-token", methods=["GET"])
+def get_csrf_token():
+    return {"csrfToken": generate_csrf()}
