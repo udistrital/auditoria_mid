@@ -587,7 +587,7 @@ def reemplazar_valores_log(metodo, log):
     Returns:
         str: Consulta SQL con los valores reemplazados.
     """
-    MAX_LOG_LENGTH = 10000
+    MAX_LOG_LENGTH = 100000
     
     if len(log) > MAX_LOG_LENGTH:
         raise ValueError("El log es demasiado largo para procesar")
