@@ -67,7 +67,7 @@
             }
         },
         "/auditoria/buscarLogsFiltrados": {
-            "get": {
+            "post": {
                 "responses": {
                     "200": {
                         "description": "Success"
@@ -82,95 +82,17 @@
                         "description": "Server error"
                     }
                 },
-                "summary": "Filtra y pagina logs de AWS con base en par\u00e1metros en la URL",
-                "description": "Permite b\u00fasqueda incremental con paginaci\u00f3n para mejor performance.",
-                "operationId": "get_filter_logs_paginated",
+                "summary": "Filtra y pagina logs de AWS con base en par\u00e1metros espec\u00edficos",
+                "description": "Permite b\u00fasqueda avanzada con m\u00faltiples filtros y paginaci\u00f3n para mejor performance.\nLos logs pueden ser procesados completamente (standard) o m\u00ednimamente (flexible) seg\u00fan el typeSearch.\n\nEjemplo de par\u00e1metros requeridos:\n```json\n{\n    \"fechaInicio\":1751371200,\n    \"horaInicio\":\"07:00\",\n    \"fechaFin\":1751461200,\n    \"horaFin\":\"08:00\",\n    \"tipo_log\":\"GET\",\n    \"codigoResponsable\":\"\",\n    \"palabraClave\":\"\",\n    \"nombreApi\":\"polux_crud\",\n    \"entornoApi\":\"SANDBOX\",\n    \"typeSearch\":\"flexible\",\n    \"pagina\":1,\n    \"limite\":5000\n}\n```\nLa respuesta para tipo de b\u00fasqueda 'Estandar' incluye metadatos de paginaci\u00f3n y los logs encontrados.\nCada log contiene:\n- Tipo de log\n- Fecha y hora\n- Usuario responsable\n- Nombre del responsable\n- Documento del responsable\n- Rol del responsable\n- Direcci\u00f3n IP\n- API consumida\n- Petici\u00f3n realizada (endpoint, m\u00e9todo, datos)\n- Evento en base de datos (si aplica)\n- Tipo de error (si aplica)\n- Mensaje de error (si aplica)\n\nLa respuesta para  tipo de b\u00fasqueda 'Flexible' incluye p\u00e1ginaci\u00f3n, pero los datos en crudo,es decir el mensaje de error sin procesar\nya que el procesamiento de la informaci\u00f3n se hace directamente desde el front.\n\n```json\n{\n    \"Status\": \"Successful request\",\n    \"Code\": \"200\",\n    \"Data\": [\n        \"2025/07/01 12:00:21.715 [I] [middleware.go:163] {\"\n        \"    app_name: polux_crud,\"\n        \"    host: xxx.xx.x.xxx:xxxxx,\"\n        \"    end_point: /,\"\n        \"    method: GET,\"\n        \"    date: 2025-07-01T12:00:21Z,\"\n        \"    sql_orm: {...},\"\n        \"    ip_user: xxx.xx.x.xxx,\"\n        \"    user_agent: ELB-HealthChecker/2.0,\"\n        \"    user: Error WSO2,\"\n        \"    data: {\"RouterPattern\":\"/\"}\"\n        \"}\"\n        ...\n    ],\n    \"Pagination\": {\n        \"pagina\": 1,\n        \"limite\": 20,\n        \"total registros\": 20,\n        \"paginas\": 1\n    }\n}",
+                "operationId": "post_filter_logs_paginated",
                 "parameters": [
                     {
-                        "in": "query",
-                        "description": "Direcci\u00f3n IP",
-                        "name": "ip",
-                        "type": "string"
-                    },
-                    {
-                        "in": "query",
-                        "description": "Endpoint espec\u00edfico",
-                        "name": "endpoint",
-                        "type": "string"
-                    },
-                    {
-                        "in": "query",
-                        "description": "API espec\u00edfica",
-                        "name": "api",
-                        "type": "string"
-                    },
-                    {
-                        "in": "query",
-                        "description": "Email del usuario responsable",
-                        "name": "codigoResponsable",
-                        "type": "string"
-                    },
-                    {
-                        "in": "query",
-                        "description": "M\u00e9todo HTTP (GET, POST, PUT, DELETE)",
-                        "name": "tipo_log",
-                        "type": "string"
-                    },
-                    {
-                        "default": 10,
-                        "in": "query",
-                        "description": "Registros por p\u00e1gina",
-                        "name": "limit",
-                        "type": "string"
-                    },
-                    {
-                        "default": 1,
-                        "in": "query",
-                        "description": "N\u00famero de p\u00e1gina",
-                        "name": "page",
-                        "type": "string"
-                    },
-                    {
+                        "name": "payload",
                         "required": true,
-                        "in": "query",
-                        "description": "Hora de fin (HH:MM)",
-                        "name": "horaFin",
-                        "type": "string"
-                    },
-                    {
-                        "required": true,
-                        "in": "query",
-                        "description": "Fecha de fin (YYYY-MM-DD)",
-                        "name": "fechaFin",
-                        "type": "string"
-                    },
-                    {
-                        "required": true,
-                        "in": "query",
-                        "description": "Hora de inicio (HH:MM)",
-                        "name": "horaInicio",
-                        "type": "string"
-                    },
-                    {
-                        "required": true,
-                        "in": "query",
-                        "description": "Fecha de inicio (YYYY-MM-DD)",
-                        "name": "fechaInicio",
-                        "type": "string"
-                    },
-                    {
-                        "required": true,
-                        "in": "query",
-                        "description": "Entorno (SANDBOX, PRODUCTION, TEST)",
-                        "name": "entornoApi",
-                        "type": "string"
-                    },
-                    {
-                        "required": true,
-                        "in": "query",
-                        "description": "Nombre del API (ej: polux_crud)",
-                        "name": "nombreApi",
-                        "type": "string"
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/filtro_log_request"
+                        }
                     }
                 ],
                 "tags": [
