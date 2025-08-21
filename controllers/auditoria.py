@@ -3,6 +3,11 @@ from flask import json
 from flask import Response
 from datetime import datetime
 
+STATUS_BAD_REQUEST = "Bad Request"
+STATUS_INTERNAL_ERROR = 'Internal Error'
+STATUS_SUCCESS = "Successful request"
+MIMETYPE = 'application/json'
+
 def get_all(data):
     """
         Consulta eventos de logs en CloudWatch para un grupo de logs específico en un rango de tiempo
@@ -53,15 +58,15 @@ def post_buscar_log(data):
         return auditoriaServiceLog.get_one_log(filtros)
     except KeyError as e:
         return Response(
-            json.dumps({'Status': 'Bad Request', 'Code': '400', 'Error': f"Missing parameter: {str(e)}"}),
+            json.dumps({'Status': STATUS_BAD_REQUEST, 'Code': '400', 'Error': f"Missing parameter: {str(e)}"}),
             status=400,
-            mimetype='application/json'
+            mimetype=MIMETYPE
         )
     except Exception as e:
         return Response(
-            json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}),
+            json.dumps({'Status': STATUS_INTERNAL_ERROR, 'Code': '500', 'Error': str(e)}),
             status=500,
-            mimetype='application/json'
+            mimetype=MIMETYPE
         )
 
 def get_logs_filtrados(data):
@@ -101,10 +106,10 @@ def get_logs_filtrados(data):
         for param in required_params:
             if param not in data:
                 return Response(
-                    json.dumps({'Status': 'Bad Request', 'Code': '400', 
+                    json.dumps({'Status': STATUS_BAD_REQUEST, 'Code': '400', 
                               'Error': f"Falta el parámetro requerido: {param}"}),
                     status=400,
-                    mimetype='application/json'
+                    mimetype=MIMETYPE
                 )
         
         # Convertir parámetros de paginación
@@ -139,13 +144,13 @@ def get_logs_filtrados(data):
             return auditoriaService.get_filtered_logs(filtros)
     except ValueError as e:
         return Response(
-            json.dumps({'Status': 'Bad Request', 'Code': '400', 'Error': str(e)}),
+            json.dumps({'Status': STATUS_BAD_REQUEST, 'Code': '400', 'Error': str(e)}),
             status=400,
-            mimetype='application/json'
+            mimetype=MIMETYPE
         )
     except Exception as e:
         return Response(
-            json.dumps({'Status': 'Internal Error', 'Code': '500', 'Error': str(e)}),
+            json.dumps({'Status': STATUS_INTERNAL_ERROR, 'Code': '500', 'Error': str(e)}),
             status=500,
-            mimetype='application/json'
+            mimetype=MIMETYPE
         )
