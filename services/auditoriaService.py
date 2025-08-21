@@ -12,14 +12,22 @@ from botocore.config import Config
 import time
 from threading import Thread
 from threading import Event
+from functools import wraps
 
 MIME_TYPE_JSON = "application/json"
-PATRON = r"\[(.*?)\] - (.+)"
+STATUS_BAD_REQUEST = "Bad Request"
+STATUS_SUCCESS = "Successful request"
+PATRON = re.compile(r"\[(.*?)\] - (.+)")
+ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
 USUARIO_NO_REGISTRADO = "Usuario no registrado"
 NOMBRE_NO_ENCONTRADO = "Nombre no encontrado"
 LIMIT = 10000
 REQUIRE_PARAMS = ["nombreApi","entornoApi","fechaInicio","horaInicio","fechaFin","horaFin",]
+# Tiempo máximo de ejecución para regex (en segundos)
+REGEX_TIMEOUT = 2  # Ajusta según necesidades
+MAX_TEXT_LENGTH = 10000  # Longitud máxima de texto para evitar DoS
+
 
 client = boto3.client(
     "logs",
@@ -37,7 +45,7 @@ def validate_params(params):
             return Response(
                 json.dumps(
                     {
-                        "Status": "Bad Request",
+                        "Status": STATUS_BAD_REQUEST,
                         "Code": "400",
                         "Error": f"Falta el parámetro requerido: {param}",
                     }
@@ -72,7 +80,7 @@ def procesamiento_respuesta(data,total_registros,page,limit):
     return Response(
             json.dumps(
                 {
-                    "Status": "Successful request",
+                    "Status": STATUS_SUCCESS,
                     "Code": "200",
                     "Data": data,
                     "Pagination": {
@@ -109,7 +117,7 @@ def bad_request(e):
     return Response(
         json.dumps(
             {
-                "Status": "Bad Request",
+                "Status": STATUS_BAD_REQUEST,
                 "Code": "400",
                 "Error": f"Parámetros inválidos: {str(e)}",
             }
@@ -199,7 +207,7 @@ def get_filtered_logs(params):
         start_time, end_time = convertir_tiempo_a_utc(
             f"{params['fechaInicio']} {params['horaInicio']}",
             f"{params['fechaFin']} {params['horaFin']}"
-        )#formato_rango_fecha(params)
+        )
 
         # 1. Obtener datos paginados
         data_query = construir_data_query(params, offset, limit)
@@ -236,16 +244,17 @@ def convertir_tiempo_a_utc(start_str, end_str, timezone_str="America/Bogota"):
     ------
         Timestamp en formato UTC (epoch seconds) para consultas en AWS.
     """
+    date_format = "%Y-%m-%d %H:%M"
     try:
-        datetime.strptime(start_str, "%Y-%m-%d %H:%M")
-        datetime.strptime(end_str, "%Y-%m-%d %H:%M")
+        datetime.strptime(start_str, date_format)
+        datetime.strptime(end_str, date_format)
     except ValueError as e:
         raise ValueError(
             f"Formato de fecha inválido. Use 'YYYY-MM-DD HH:MM'. Error: {str(e)}"
         )
     local_tz = timezone(timezone_str)
-    start = datetime.strptime(start_str, "%Y-%m-%d %H:%M")
-    end = datetime.strptime(end_str, "%Y-%m-%d %H:%M")
+    start = datetime.strptime(start_str, date_format)
+    end = datetime.strptime(end_str, date_format)
     return int(local_tz.localize(start).astimezone(utc).timestamp()), int(
         local_tz.localize(end).astimezone(utc).timestamp()
     )
@@ -259,56 +268,56 @@ def ejecutar_query_cloudwatch(query_string, log_group, start_time, end_time):
         """Hilo que imprime el tiempo y verifica timeout"""
         while not stop_event.is_set():
             elapsed = time.time() - start_time
-            #print(f"\rTiempo transcurrido: {elapsed:.1f} segundos", end="", flush=True)
-            # Verificar si alcanzó el timeout
             if elapsed >= timeout:
-                stop_event.set()  # Activar señal de parada
+                stop_event.set()
                 break
-            time.sleep(0.1)  # Verificar más frecuentemente (cada 100ms)
+            time.sleep(0.1)
 
-    try:
-        timeout = 60  # Tiempo máximo de espera en segundos
-        stop_event = Event()
-        start_total_time = time.time()
+    def should_stop_processing(result):
+        """Determina si el procesamiento debe detenerse"""
+        is_complete = result.get("status") in ["Complete", "Failed", "Cancelled"]
+        has_max_results = isinstance(result, dict) and len(result.get('results', [])) >= 10000
+        return is_complete or has_max_results
 
-        # Iniciar contador con referencia al mismo start_time
+    def start_query_thread(stop_event, start_total_time, timeout):
+        """Inicia el hilo del timer"""
         timer_thread = Thread(target=print_timer, args=(stop_event, start_total_time, timeout))
         timer_thread.daemon = True
         timer_thread.start()
+        return timer_thread
 
-        response = client.start_query(
+    def execute_cloudwatch_query():
+        """Ejecuta la consulta a CloudWatch"""
+        return client.start_query(
             logGroupName=log_group,
             startTime=start_time,
             endTime=end_time,
             queryString=query_string,
         )
-        query_id = response["queryId"]
 
+    def process_query_results(query_id, stop_event):
+        """Obtiene y procesa los resultados de la consulta"""
         result = []
-        while not stop_event.is_set():  # Ahora verificamos la señal de parada
-            # Obtener resultados
+        while not stop_event.is_set():
             result = client.get_query_results(queryId=query_id)
-
-            # Verificar si alcanzó el límite de registros
-            if isinstance(result, dict) and len(result.get('results', [])) >= 10000:
+            if should_stop_processing(result):
                 stop_event.set()
                 break
+            time.sleep(2)
+        return result
 
-            # Verificar si la consulta terminó naturalmente
-            if result.get("status") in ["Complete", "Failed", "Cancelled"]:
-                stop_event.set()
-                break
+    try:
+        timeout = 60
+        stop_event = Event()
+        start_total_time = time.time()
 
-            time.sleep(2)  # Intervalo entre checks
+        timer_thread = start_query_thread(stop_event, start_total_time, timeout)
+        response = execute_cloudwatch_query()
+        query_id = response["queryId"]
+        result = process_query_results(query_id, stop_event)
 
-        # Procesar resultado final
-        #print()  # Salto de línea después del contador
         if isinstance(result, dict):
             result["status"] = "Complete" if result.get("status") != "Failed" else "Failed"
-
-            elapsed = time.time() - start_total_time
-            #print(f"Consulta {'completada' if result['status'] == 'Complete' else 'fallida'} en {elapsed:.1f} segundos")
-            #print(f"Registros obtenidos: {len(result.get('results', []))}")
 
         return result
 
@@ -366,43 +375,9 @@ def procesar_logs(results):
             message = next(item["value"] for item in log if item["field"] == "@message")
             extracted_data = extract_log_data(message)
 
-            fecha = extracted_data.get("fecha", "")
-            fecha_convertida = ""
-            try:
-                fecha_convertida = datetime.strptime(
-                    fecha, "%Y-%m-%dT%H:%M:%SZ"
-                ).strftime("%Y-%m-%d %H:%M:%S")
-            except Exception:
-                pass
-
-            usuario_log = extracted_data.get("usuario", "").strip()
-            if usuario_log not in [
-                "N/A",
-                "Error",
-                "Error WSO2",
-                ERROR_WSO2_SIN_USUARIO,
-                "",
-            ]:
-                usuario_log += "@udistrital.edu.co"
-            else:
-                usuario_log = ERROR_WSO2_SIN_USUARIO
-
-            if usuario_log != ERROR_WSO2_SIN_USUARIO:
-                resultado = buscar_user_rol(usuario_log)
-                if USUARIO_NO_REGISTRADO in resultado:
-                    rol = "Rol no encontrado"
-                    doc = "Documento no encontrado"
-                    nombre = NOMBRE_NO_ENCONTRADO
-                elif "error" in resultado:
-                    rol = doc = nombre = "Error"
-                else:
-                    rol = resultado.get("roles")
-                    doc = resultado.get("documento")
-                    nombre = buscar_nombre_user(doc)
-            else:
-                rol = "Rol no encontrado"
-                doc = "Documento no encontrado"
-                nombre = NOMBRE_NO_ENCONTRADO
+            fecha_convertida = convert_fecha(extracted_data.get("fecha", ""))
+            usuario_log = process_usuario_log(extracted_data.get("usuario", "").strip())
+            nombre, doc, rol = get_user_info(usuario_log)
 
             log_obj = respuesta_log.RespuestaLog(
                 tipo_log=extracted_data.get("tipo_log"),
@@ -430,6 +405,35 @@ def procesar_logs(results):
         except Exception as e:
             print(f"Error procesando log: {e}")
     return eventos
+
+def convert_fecha(fecha):
+    """Convert date format if possible"""
+    try:
+        return datetime.strptime(fecha, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return ""
+
+def process_usuario_log(usuario_log):
+    """Process usuario log and add domain if needed"""
+    if usuario_log not in ["N/A", "Error", "Error WSO2", ERROR_WSO2_SIN_USUARIO, ""]:
+        return usuario_log + "@udistrital.edu.co"
+    return ERROR_WSO2_SIN_USUARIO
+
+def get_user_info(usuario_log):
+    """Get user information (nombre, documento, rol)"""
+    if usuario_log == ERROR_WSO2_SIN_USUARIO:
+        return NOMBRE_NO_ENCONTRADO, "Documento no encontrado", "Rol no encontrado"
+
+    resultado = buscar_user_rol(usuario_log)
+    if USUARIO_NO_REGISTRADO in resultado:
+        return NOMBRE_NO_ENCONTRADO, "Documento no encontrado", "Rol no encontrado"
+    elif "error" in resultado:
+        return "Error", "Error", "Error"
+
+    rol = resultado.get("roles")
+    doc = resultado.get("documento")
+    nombre = buscar_nombre_user(doc)
+    return nombre, doc, rol
 
 def extract_log_data(log_entry):
     """
@@ -581,32 +585,41 @@ def reemplazar_valores_log(metodo, log):
     Returns:
         str: Consulta SQL con los valores reemplazados.
     """
-    if metodo.upper() == "POST":
+    MAX_LOG_LENGTH = 100000
+    
+    if len(log) > MAX_LOG_LENGTH:
+        raise ValueError("El log es demasiado largo para procesar")
+
+    metodo = metodo.upper()
+    
+    if metodo not in ["POST", "PUT", "GET", "DELETE"]:
+        return None
+    try:
         match = re.search(PATRON, log)
-        if match:
-            consulta = match.group(1)
-            valores = match.group(2).split(", ")
+        if not match:
+            return _format_error_message(metodo, log)
+        consulta = match.group(1)
+        valores = _extract_values(metodo, match.group(2))
+        return _replace_placeholders(consulta, valores)
+    except re.error:
+        return f"Error al procesar el log {metodo} con expresión regular"
 
-            for i, valor in enumerate(valores, start=1):
-                consulta = consulta.replace(f"${i}", valor.strip())
+def _extract_values(metodo, values_str):
+    """Extrae valores según el método HTTP"""
+    if metodo == "POST":
+        return values_str.split(", ")
+    else:  # PUT, GET, DELETE
+        return re.findall(r"`([^`]*)`", values_str)
 
-            return consulta
-        else:
-            return "El formato del log POST no es válido: " + log
+def _replace_placeholders(consulta, valores):
+    """Reemplaza placeholders ($1, $2, etc.) con valores reales"""
+    for i, valor in enumerate(valores, start=1):
+        consulta = consulta.replace(f"${i}", valor.strip())
+    return consulta
 
-    elif metodo.upper() in ["PUT", "GET", "DELETE"]:
-        match = re.search(PATRON, log)
-        if match:
-            consulta = match.group(1)
-            valores = re.findall(r"`([^`]*)`", match.group(2))
-
-            for i, valor in enumerate(valores, start=1):
-                consulta = consulta.replace(f"${i}", valor.strip())
-            return consulta
-        else:
-            return f"El formato del log {metodo.upper()} no es válido: {log}"
-    else:
-        return
+def _format_error_message(metodo, log):
+    """Formatea mensaje de error para logs inválidos"""
+    return f"El formato del log {metodo} no es válido: {log}"
 
 def extraer_error(log_string):
     """
@@ -661,5 +674,11 @@ def limpiar_caracteres_ansi(texto):
     """
     if not texto:
         return texto
-    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-    return ansi_escape.sub('', texto)
+
+    if len(texto) > MAX_TEXT_LENGTH:
+        raise ValueError(f"El texto excede la longitud máxima permitida ({MAX_TEXT_LENGTH} caracteres)")
+    
+    try:
+        return ANSI_ESCAPE.sub('', texto)  # Sin parámetro timeout
+    except re.error:
+        return texto
