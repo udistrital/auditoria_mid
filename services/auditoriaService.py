@@ -509,7 +509,7 @@ def buscar_user_rol(user_email):
     Returns:
         dict: La respuesta del servidor en formato JSON, o un error en caso de falla.
     """
-    url = f"{os.environ['AUDITORIA_MID']}/v1/token/userRol"
+    url = f"{os.environ['AUTENTICACION_MID']}/v1/token/userRol"
     headers = {"Content-Type": MIME_TYPE_JSON}
 
     payload = {"user": user_email}
