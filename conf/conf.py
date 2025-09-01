@@ -1,7 +1,12 @@
 import os
 import sys
 
-variables = ['API_PORT']
+variables = ['API_PORT', 'ENV']
+
+if os.environ['ENV'] == "dev":
+    origins = ["*"]
+else:
+    origins = ["*.udistrital.edu.co"]
 
 api_cors_config = {
   "origins": ["*"],
@@ -9,7 +14,7 @@ api_cors_config = {
   "allow_headers": ["Authorization", "Content-Type"]
 }
 
-def checkEnv():
+def check_env():
   for variable in variables:
       if variable not in os.environ:
           print(str(variable) + " environment variable not found")

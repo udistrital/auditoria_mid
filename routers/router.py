@@ -5,20 +5,34 @@ from flask_cors import CORS, cross_origin
 from conf.conf import api_cors_config
 from models import model_params
 
-def addRouting(app):
+def add_routing(app):
     app.register_blueprint(healthCheckController)
     app.register_blueprint(auditoriaController, url_prefix='/v1')
 
+health_check_cors_config = {
+    'origins': api_cors_config['origins'],  # Usar los orígenes configurados
+    'methods': ['GET'],  # Solo permitir métodos necesarios
+    'allow_headers': ['Content-Type'],
+    'supports_credentials': False  # Solo habilitar si es necesario
+}
 
-healthCheckController = Blueprint('healthCheckController', __name__, url_prefix='/')
-CORS(healthCheckController)
+auditoria_cors_config = {
+    'origins': api_cors_config['origins'],
+    'methods': ['GET', 'POST', 'OPTIONS'],  # Solo métodos necesarios
+    'allow_headers': ['Content-Type', 'Authorization'],
+    'max_age': 600,  # Tiempo de cache para preflight requests
+    'supports_credentials': False
+}
+
+healthCheckController = Blueprint('healthCheckController', __name__, url_prefix='/v1')
+CORS(healthCheckController, **health_check_cors_config)
 
 @healthCheckController.route('/')
-def _():
-    return healthCheck.healthCheck(documentDoc)
+def health_check():
+    return healthCheck.health_check(documentDoc)
 
 auditoriaController = Blueprint('auditoriaController', __name__)
-CORS(auditoriaController)
+CORS(auditoriaController, **auditoria_cors_config)
 
 documentDoc = Api(auditoriaController, version='1.0', title='auditoria_mid', description='Api mid para la obtención de logs de AWS', doc="/swagger")
 documentNamespaceController = documentDoc.namespace("auditoria", description="Consulta logs de AWS")
@@ -26,7 +40,7 @@ documentNamespaceController = documentDoc.namespace("auditoria", description="Co
 auditoria_params=model_params.define_parameters(documentDoc)
 
 @documentNamespaceController.route('/', strict_slashes=False)
-class documentGetAll(Resource):
+class DocumentGetAll(Resource):
     @documentDoc.doc(responses={
         200: 'Success',
         206: 'Partial Content',
@@ -49,7 +63,7 @@ class documentGetAll(Resource):
                 Respuesta con los logs consultados o error.
         """
         params = request.args  
-        return auditoria.getAll(params)
+        return auditoria.get_all(params)
 
 
 @documentNamespaceController.route('/buscarLog', strict_slashes=False)
@@ -75,7 +89,7 @@ class FilterLogs(Resource):
             - horaInicio (str): Hora de inicio en formato hh:mm
             - fechaFin (str): Fecha de fin en formato aaaa-mm-dd
             - horaFin (str): Hora de fin en formato hh:mm
-            - tipoLog (str): Tipo de log (GET, POST, PUT, etc.)
+            - tipo_log (str): Tipo de log (GET, POST, PUT, etc.)
             - codigoResponsable (int): Código del responsable
             - rolResponsable (str): Rol del responsable
 
@@ -85,4 +99,86 @@ class FilterLogs(Resource):
             Respuesta con los logs filtrados en formato JSON.
         """
         params = request.json 
-        return auditoria.postBuscarLog(params)
+        return auditoria.post_buscar_log(params)
+
+@documentNamespaceController.route('/buscarLogsFiltrados', strict_slashes=False)
+class FilterLogsPaginated(Resource):
+    @documentDoc.doc(responses={
+        200: 'Success',
+        400: 'Bad request',
+        404: 'Not found',
+        500: 'Server error'
+    },
+    body=auditoria_params['filtro_log_model'])
+    @cross_origin(**api_cors_config)
+    def post(self):
+        """
+        Filtra y pagina logs de AWS con base en parámetros específicos.
+
+        Permite búsqueda avanzada con múltiples filtros y paginación para mejor performance.
+        Los logs pueden ser procesados completamente (standard) o mínimamente (flexible) según el typeSearch.
+
+        Ejemplo de parámetros requeridos:
+        ```json
+        {
+            "fechaInicio":1751371200,
+            "horaInicio":"07:00",
+            "fechaFin":1751461200,
+            "horaFin":"08:00",
+            "tipo_log":"GET",
+            "codigoResponsable":"",
+            "palabraClave":"",
+            "nombreApi":"polux_crud",
+            "entornoApi":"SANDBOX",
+            "typeSearch":"flexible",
+            "pagina":1,
+            "limite":5000
+        }
+        ```
+        La respuesta para tipo de búsqueda 'Estandar' incluye metadatos de paginación y los logs encontrados.
+        Cada log contiene:
+        - Tipo de log
+        - Fecha y hora
+        - Usuario responsable
+        - Nombre del responsable
+        - Documento del responsable
+        - Rol del responsable
+        - Dirección IP
+        - API consumida
+        - Petición realizada (endpoint, método, datos)
+        - Evento en base de datos (si aplica)
+        - Tipo de error (si aplica)
+        - Mensaje de error (si aplica)
+
+        La respuesta para  tipo de búsqueda 'Flexible' incluye páginación, pero los datos en crudo,es decir el mensaje de error sin procesar
+        ya que el procesamiento de la información se hace directamente desde el front.
+
+        ```json
+        {
+            "Status": "Successful request",
+            "Code": "200",
+            "Data": [
+                "2025/07/01 12:00:21.715 [I] [middleware.go:163] {"
+                "    app_name: polux_crud,"
+                "    host: xxx.xx.x.xxx:xxxxx,"
+                "    end_point: /,"
+                "    method: GET,"
+                "    date: 2025-07-01T12:00:21Z,"
+                "    sql_orm: {...},"
+                "    ip_user: xxx.xx.x.xxx,"
+                "    user_agent: ELB-HealthChecker/2.0,"
+                "    user: Error WSO2,"
+                "    data: {\"RouterPattern\":\"/\"}"
+                "}"
+                ...
+            ],
+            "Pagination": {
+                "pagina": 1,
+                "limite": 20,
+                "total registros": 20,
+                "paginas": 1
+            }
+        }
+        """
+        params = request.json
+        return auditoria.get_logs_filtrados(params)

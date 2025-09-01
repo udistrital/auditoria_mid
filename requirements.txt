@@ -4,6 +4,8 @@ packaging
 Flask
 flask-restx
 flask-cors
+flask-wtf
 werkzeug
 boto3
+gunicorn
 pyyaml

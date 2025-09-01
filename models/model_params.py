@@ -15,15 +15,12 @@ def define_parameters(api):
         'horaFin': fields.String(
             required=True
         ),
-        'tipoLog': fields.String(
+        'tipo_log': fields.String(
             required=True
         ),
         'codigoResponsable': fields.Integer(
             required=True
         ),
-        #'rolResponsable': fields.String(
-        #    required=True
-        #),
         'nombreApi': fields.String(
             required=True
         ),

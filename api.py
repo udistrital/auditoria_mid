@@ -1,16 +1,41 @@
 import os
 from flask import Flask
+from flask_cors import cross_origin
+from flask_cors import CORS
 from conf import conf
 from routers import router
 from controllers import error
-conf.checkEnv()
+import logging
+conf.check_env()
 
 app = Flask(__name__)
+def get_allowed_origins():
+    env = os.getenv('ENV', 'DEV').upper()  # Por defecto asumimos desarrollo
 
-router.addRouting(app)
+    if env == 'PROD':
+        # Configuración para producción - solo HTTPS
+        return ['https://*.udistrital.edu.co', 'https://udistrital.edu.co']
+    else:
+        # Configuración para desarrollo - permite HTTP local
+        return ['http://localhost:4200', 'http://127.0.0.1:4200','http://localhost:9000', 'http://127.0.0.1:9000']
+
+cors_config = {
+    "resources": {
+        r"/v1/*": {
+            "origins": get_allowed_origins(),
+            "methods": ["GET", "POST", "OPTIONS"],
+            "allow_headers": ["Authorization", "Content-Type"],
+            "expose_headers": ["X-Total-Count"],
+            "max_age": 600,
+            "supports_credentials": False
+        }
+    }
+}
+
+CORS(app, **cors_config)
+router.add_routing(app)
 error.add_error_handler(app)
 
 if __name__ == '__main__':
     
-    #app.debug = True
     app.run(host='0.0.0.0', port=int(os.environ['API_PORT']))

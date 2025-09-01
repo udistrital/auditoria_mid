@@ -3,4 +3,4 @@
 set -e
 set -u
 set -o pipefail
-python api.py
+gunicorn api:app --bind 0.0.0.0:$API_PORT
