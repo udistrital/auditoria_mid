@@ -1,6 +1,4 @@
-FROM python:3.8
-
-RUN pip install awscli
+FROM python:3.9
 
 COPY entrypoint.sh entrypoint.sh
 
@@ -25,8 +23,6 @@ COPY services/** /services/
 COPY models/** /models/
 
 COPY routers/** /routers/
-
-COPY swagger/** /swagger/
 
 ADD api.py .
 
