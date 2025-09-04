@@ -1,4 +1,4 @@
-FROM python:3.8
+FROM python:3.9
 
 COPY entrypoint.sh entrypoint.sh
 
@@ -8,13 +8,15 @@ ENTRYPOINT ["/entrypoint.sh"]
 
 ADD requirements.txt .
 
-RUN pip install -r requirements.txt
+RUN pip install --upgrade pip
+
+RUN pip install --default-timeout=100 -r requirements.txt
 
 RUN apt-get update
 
 RUN apt-get install poppler-utils -y
 
-COPY conf/** /conf/
+COPY conf/** /conf/+
 
 COPY controllers/** /controllers/
 

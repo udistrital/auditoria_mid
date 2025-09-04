@@ -26,7 +26,7 @@ LIMIT = 10000
 REQUIRE_PARAMS = ["nombreApi","entornoApi","fechaInicio","horaInicio","fechaFin","horaFin",]
 # Tiempo máximo de ejecución para regex (en segundos)
 REGEX_TIMEOUT = 2  # Ajusta según necesidades
-MAX_TEXT_LENGTH = 10000  # Longitud máxima de texto para evitar DoS
+MAX_TEXT_LENGTH = 50000  # Longitud máxima de texto para evitar DoS
 
 
 client = boto3.client(
