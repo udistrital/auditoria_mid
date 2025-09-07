@@ -15,6 +15,7 @@ from threading import Event
 
 MIME_TYPE_JSON = "application/json"
 STATUS_BAD_REQUEST = "Bad Request"
+STATUS_NOT_LOGS_FOUND = "No logs found"
 STATUS_SUCCESS = "Successful request"
 PATRON = re.compile(r"\[(.*?)\] - (.+)")
 PATTERNS = {
@@ -111,15 +112,9 @@ def no_logs_found(page,limit):
     return Response(
                 json.dumps(
                     {
-                        "Status": "No logs found",
+                        "Status": STATUS_NOT_LOGS_FOUND,
                         "Code": "404",
-                        "Data": [],
-                        "Pagination": {
-                            "pagina": page,
-                            "limite": limit,
-                            "total": 0,
-                            "paginas": 0,
-                        },
+                        "Error": "No se encontraron logs en el rango de fechas seleccionado",
                     }
                 ),
                 status=404,
@@ -141,13 +136,22 @@ def internal_error(e):
     import traceback
     print(f"Error en get_filtered_logs: {str(e)}")
     print(traceback.format_exc())
-
+    error_msg = str(e)
+    # Detecta el error de log group no existente
+    if "ResourceNotFoundException" in error_msg and "Log group" in error_msg:
+        user_msg = (
+            "No se encontró el grupo de logs solicitado en AWS. "
+            "Verifica que el API y el entorno seleccionados sean correctos. "
+            "Si el problema persiste, contacta al administrador."
+        )
+    else:
+        user_msg = error_msg
     return Response(
         json.dumps(
             {
                 "Status": "Internal Error",
                 "Code": "500",
-                "Error": str(e),
+                "Error": user_msg,
                 "Details": (
                     traceback.format_exc()
                     if os.environ.get("FLASK_ENV") == "development"
@@ -382,12 +386,8 @@ def procesar_logs(results):
         Lista de objetos estructurados (RespuestaLog) listos para enviar al frontend o API.
     """
     eventos = []
-    count = 0
-    print(len(results))
     for log in results:
         try:
-            count = count+1
-            print(count)
             message = next(item["value"] for item in log if item["field"] == "@message")
             extracted_data = extract_log_data(message)
 
