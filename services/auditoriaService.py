@@ -13,11 +13,25 @@ import time
 from threading import Thread
 from threading import Event
 from functools import wraps
+from functools import lru_cache
 
 MIME_TYPE_JSON = "application/json"
 STATUS_BAD_REQUEST = "Bad Request"
 STATUS_SUCCESS = "Successful request"
 PATRON = re.compile(r"\[(.*?)\] - (.+)")
+PATTERNS = {
+    "apiConsumen": r"app_name:\s([^\s,]+)",
+    "api": r"host:\s([^\s,]+)",
+    "endpoint": r"end_point:\s([^\s,]+)",
+    "metodo": r"method:\s([^\s,]+)",
+    "fecha": r"date:\s([^\s,]+)",
+    "direccionAccion": r"ip_user:\s([^\s,]+)",
+    "user_agent": r"user_agent:\s([^\s,]+)",
+    "usuario": r"\b, user:\s([^\s,]+)",
+    "data": r"data:\s({.*})",
+    "tipo_log": r"\[([a-zA-Z0-9\._-]+)(?=\.\w+:)",
+    "sql_orm": r"sql_orm:\s\{(.*?)\},\s+ip_user:",
+}
 ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 ERROR_WSO2_SIN_USUARIO = "Error WSO2 - Sin usuario"
 USUARIO_NO_REGISTRADO = "Usuario no registrado"
@@ -26,7 +40,7 @@ LIMIT = 10000
 REQUIRE_PARAMS = ["nombreApi","entornoApi","fechaInicio","horaInicio","fechaFin","horaFin",]
 # Tiempo máximo de ejecución para regex (en segundos)
 REGEX_TIMEOUT = 2  # Ajusta según necesidades
-MAX_TEXT_LENGTH = 50000  # Longitud máxima de texto para evitar DoS
+MAX_TEXT_LENGTH = 100000  # Longitud máxima de texto para evitar DoS
 
 
 client = boto3.client(
@@ -370,8 +384,12 @@ def procesar_logs(results):
         Lista de objetos estructurados (RespuestaLog) listos para enviar al frontend o API.
     """
     eventos = []
+    count = 0
+    print(len(results))
     for log in results:
         try:
+            count = count+1
+            print(count)
             message = next(item["value"] for item in log if item["field"] == "@message")
             extracted_data = extract_log_data(message)
 
@@ -396,7 +414,8 @@ def procesar_logs(results):
                     extracted_data.get("data"),
                 ),
                 evento_bd=reemplazar_valores_log(
-                    extracted_data.get("metodo"), extracted_data.get("sql_orm")
+                    extracted_data.get("metodo"),
+                    extracted_data.get("sql_orm")
                 ),
                 tipo_error="N/A",
                 mensaje_error=limpiar_caracteres_ansi(message),
@@ -449,24 +468,10 @@ def extract_log_data(log_entry):
     dict
         Diccionario con los datos extraídos.
     """
-    patterns = {
-        "apiConsumen": r"app_name:\s([^\s,]+)",
-        "api": r"host:\s([^\s,]+)",
-        "endpoint": r"end_point:\s([^\s,]+)",
-        "metodo": r"method:\s([^\s,]+)",
-        "fecha": r"date:\s([^\s,]+)",
-        "direccionAccion": r"ip_user:\s([^\s,]+)",
-        "user_agent": r"user_agent:\s([^\s,]+)",
-        "usuario": r"\b, user:\s([^\s,]+)",
-        "data": r"data:\s({.*})",
-        "tipo_log": r"\[([a-zA-Z0-9\._-]+)(?=\.\w+:)",
-        "sql_orm": r"sql_orm:\s\{(.*?)\},\s+ip_user:",
-    }
-
     extracted_data = {}
     clean_log = re.sub(r"\x1b\[[0-9;]*m", "", log_entry)
 
-    for key, pattern in patterns.items():
+    for key, pattern in PATTERNS.items():
         match = re.search(pattern, clean_log)
         if match:
             value = match.group(1)
@@ -534,7 +539,11 @@ def buscar_user_rol(user_email):
                 "roles": ", ".join(filtered_roles),
                 "documento": response_data.get("documento"),
             }
-
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 429:   # rate‑limited
+            time.sleep(1)   # espera y reintenta
+            return buscar_user_rol(user_email)   # retro‑call
+        raise
     except requests.exceptions.RequestException:
         return {USUARIO_NO_REGISTRADO}
 
@@ -569,9 +578,10 @@ def aplicar_filtros_adicionales(eventos, params):
     # Filtrar por IP si está especificado
     if params.get("ip"):
         filtered = [log for log in filtered if params["ip"] == log.direccion_accion]
-    # Filtrar por IP si está especificado
-    if params.get("ip"):
-        filtered = [log for log in filtered if params["palabraClave"] in log.data_error]
+
+    # Filtrar por palabraClave si está especificado
+    if params.get("palabraClave"):
+        filtered = [log for log in filtered if params["palabraClave"] in log.peticion_realizada]
 
     return filtered
 
@@ -585,6 +595,8 @@ def reemplazar_valores_log(metodo, log):
     Returns:
         str: Consulta SQL con los valores reemplazados.
     """
+    if log is None or log == "":
+        return None
     MAX_LOG_LENGTH = 100000
     
     if len(log) > MAX_LOG_LENGTH:
