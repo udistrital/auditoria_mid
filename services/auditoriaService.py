@@ -12,8 +12,6 @@ from botocore.config import Config
 import time
 from threading import Thread
 from threading import Event
-from functools import wraps
-from functools import lru_cache
 
 MIME_TYPE_JSON = "application/json"
 STATUS_BAD_REQUEST = "Bad Request"
