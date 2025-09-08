@@ -16,7 +16,7 @@ RUN apt-get update
 
 RUN apt-get install poppler-utils -y
 
-COPY conf/** /conf/+
+COPY conf/** /conf/
 
 COPY controllers/** /controllers/
 
